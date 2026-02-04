@@ -57,7 +57,6 @@ www-test/
 # Not sure yet...
 
 ## IntelliJ, Android Studio:
-.idea/
 *.ipr
 *.iws
 *.iml
