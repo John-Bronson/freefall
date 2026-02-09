@@ -27,8 +27,8 @@ public class Main extends ApplicationAdapter {
         font = new BitmapFont();
         cam = new OrthographicCamera(3200, 2400);
         cam.position.set(0,0, 0);
-        planet1 = new Planet(-900, 0, 250);
-        planet2 = new Planet(900, 0, 250);
+        planet1 = new Planet(-900, 0);
+        planet2 = new Planet(900, 0);
         shape = new ShapeRenderer();
     }
 
@@ -62,6 +62,10 @@ public class Main extends ApplicationAdapter {
             cam.translate(0, 100, 0);
         } if (Gdx.input.isKeyJustPressed(Input.Keys.DOWN)) {
             cam.translate(0, -100, 0);
+        } if (Gdx.input.isKeyJustPressed(Input.Keys.Z)) {
+            cam.zoom += 0.1f;
+        } if (Gdx.input.isKeyJustPressed(Input.Keys.X)) {
+            cam.zoom -= 0.1f;
         }
     }
 

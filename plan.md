@@ -1,4 +1,3 @@
-
 # Complete Development Phases
 ## Phase 0: Foundation ✓ (COMPLETED!)
 
@@ -61,13 +60,17 @@
 - [ ] Track which planet you last landed on (for fuel station unlock)
 - [ ] Test: Can you reliably land? Is it too easy or too hard?
 
-## Phase 6: Snap Zoom
+## Phase 6: Smooth Zoom
 
-- [ ] Implement distance-based zoom switching (two discrete zoom levels)
-- [ ] Add hysteresis to prevent flickering at threshold
-- [ ] Zoom is based on distance to nearest planet
-- [ ] Ensure HUD elements (fuel, heat) remain visible/scaled appropriately at both zoom levels
-- [ ] Test: Does the snap feel good? Is the trigger distance right? Any disorientation?
+- [ ] Implement continuous zoom based on distance to nearest planet
+- [ ] Define min/max zoom levels (e.g., zoomed out for traveling between planets, zoomed in for landing)
+- [ ] Smooth zoom interpolation using lerp or similar easing function
+- [ ] Calculate target zoom level based on distance to nearest planet (closer = more zoomed in)
+- [ ] Add smooth transition speed parameter to control how quickly zoom responds
+- [ ] Consider using a non-linear curve (exponential/logarithmic) for more natural feel
+- [ ] Ensure HUD elements remain visible/scaled appropriately across all zoom levels
+- [ ] Optional: Add minimum zoom change threshold to prevent micro-adjustments
+- [ ] Test: Does the zoom transition feel smooth? Is it responsive but not jarring? Does it help or hinder gameplay?
 
 ## Phase 7: Space Station Docking & Basic Audio
 
