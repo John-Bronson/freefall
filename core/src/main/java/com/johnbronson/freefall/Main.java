@@ -25,10 +25,10 @@ public class Main extends ApplicationAdapter {
         batch = new SpriteBatch();
         image = new Texture("libgdx.png");
         font = new BitmapFont();
-        cam = new OrthographicCamera(3200, 2400);
+        cam = new OrthographicCamera(800, 600);
         cam.position.set(0,0, 0);
-        planet1 = new Planet(-900, 0);
-        planet2 = new Planet(900, 0);
+        planet1 = new Planet(-400, 0);
+        planet2 = new Planet(400, 0);
         shape = new ShapeRenderer();
     }
 
@@ -55,13 +55,13 @@ public class Main extends ApplicationAdapter {
         if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) {
             Gdx.app.exit();
         } if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)) {
-            cam.translate(-100, 0, 0);
+            cam.translate(cam.zoom * -100, 0, 0);
         } if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT)) {
-            cam.translate(100, 0, 0);
+            cam.translate(cam.zoom * 100, 0, 0);
         } if (Gdx.input.isKeyJustPressed(Input.Keys.UP)) {
-            cam.translate(0, 100, 0);
+            cam.translate(0, cam.zoom * 100, 0);
         } if (Gdx.input.isKeyJustPressed(Input.Keys.DOWN)) {
-            cam.translate(0, -100, 0);
+            cam.translate(0, cam.zoom * -100, 0);
         } if (Gdx.input.isKeyJustPressed(Input.Keys.Z)) {
             cam.zoom += 0.1f;
         } if (Gdx.input.isKeyJustPressed(Input.Keys.X)) {

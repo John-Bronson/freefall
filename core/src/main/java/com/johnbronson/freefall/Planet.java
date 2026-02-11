@@ -3,7 +3,7 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 
 public class Planet {
-    private static final float DEFAULT_RADIUS = 250f;
+    private static final float DEFAULT_RADIUS = 100;
 
     float x, y, radius;
     Color color;
@@ -27,7 +27,8 @@ public class Planet {
         shape.setColor(color);
 //         shape.circle(x, y, radius);
         // draw all the triangles
-        for (int currentMil = 0; currentMil < terrainPoints.length; currentMil++) {
+        int step = 10;
+        for (int currentMil = 0; currentMil < terrainPoints.length; currentMil += step) {
 
             // Get current point
             float currentDistance = terrainPoints[currentMil];
@@ -36,7 +37,7 @@ public class Planet {
             float currentY = this.y + currentDistance * (float)Math.sin(currentAngle);
 
             // Get the next point (wrapping around at the end)
-            int nextMil = (currentMil +1) % terrainPoints.length; // wraps to first member of array if we're at the end
+            int nextMil = (currentMil + step) % terrainPoints.length; // wraps to first member of array if we're at the end
             float nextDistance = terrainPoints[nextMil];
             float nextAngle = nextMil * Constants.MILS_TO_RADIANS;
             float nextX = x + nextDistance * (float)Math.cos(nextAngle);
@@ -51,8 +52,8 @@ public class Planet {
 
     private float[] generateTerrain () {
         float[] calculatedTerrainPoints = new float[Constants.MILS_PER_CIRCLE];
-        float max = 255;
-        float min = 250;
+        float max = 103;
+        float min = 100;
 
         for (int i = 0; i < calculatedTerrainPoints.length; i++) {
             calculatedTerrainPoints[i] = randomFloat(min, max);
