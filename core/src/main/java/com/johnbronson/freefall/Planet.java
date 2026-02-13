@@ -4,7 +4,7 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 
 public class Planet {
     private static final float DEFAULT_RADIUS = 100;
-
+    int landingHeight = 105;
     float x, y, radius;
     Color color;
     float[] terrainPoints = new float[Constants.MILS_PER_CIRCLE];
@@ -15,6 +15,7 @@ public class Planet {
         this.radius = radius;
         this.color = Color.WHITE;
         terrainPoints = generateTerrain();
+        makeLandingZones();
         System.out.println("First terrain point: " + terrainPoints[0]);
         System.out.println("Last terrain point: " + terrainPoints[6399]);
     }
@@ -27,7 +28,7 @@ public class Planet {
         shape.setColor(color);
 //         shape.circle(x, y, radius);
         // draw all the triangles
-        int step = 10;
+        int step = 50;
         for (int currentMil = 0; currentMil < terrainPoints.length; currentMil += step) {
 
             // Get current point
@@ -47,12 +48,22 @@ public class Planet {
             shape.triangle(this.x, this.y, currentX, currentY, nextX, nextY);
         }
 
+        for (int currentMil = 0; currentMil < terrainPoints.length; currentMil += step) {
+
+            if ((currentMil > 0 && currentMil < 401) ||
+                (currentMil > 2133 && currentMil < 2533) ||
+                (currentMil > 4267 && currentMil < 4667)) {
+
+
+            }
+        }
+
     }
 
 
     private float[] generateTerrain () {
         float[] calculatedTerrainPoints = new float[Constants.MILS_PER_CIRCLE];
-        float max = 103;
+        float max = 110;
         float min = 100;
 
         for (int i = 0; i < calculatedTerrainPoints.length; i++) {
@@ -64,5 +75,20 @@ public class Planet {
 
     private float randomFloat(float min, float max) {
         return min + (float)Math.random() * (max - min);
+    }
+
+    private void makeLandingZones() {
+        System.out.println("Generating landing zones...");
+        // landing zones will be at 0-400, 2133-2533, and 4267-4667 in the terrain array
+
+        makeOneLandingZone(0, 400);
+        makeOneLandingZone(2133, 2533);
+        makeOneLandingZone(4267, 4667);
+    }
+
+    private void makeOneLandingZone(int start, int finish) {
+        for (int i = start; i < finish; i++) {
+            terrainPoints[i] = this.landingHeight;
+        }
     }
 }
