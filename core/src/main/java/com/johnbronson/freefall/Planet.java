@@ -25,6 +25,10 @@ public class Planet {
     }
 
     public void draw(ShapeRenderer shape) {
+
+        // Draw shapes
+        shape.begin(ShapeRenderer.ShapeType.Filled);
+
         shape.setColor(color);
 //         shape.circle(x, y, radius);
         // draw all the triangles
@@ -48,16 +52,31 @@ public class Planet {
             shape.triangle(this.x, this.y, currentX, currentY, nextX, nextY);
         }
 
-        for (int currentMil = 0; currentMil < terrainPoints.length; currentMil += step) {
+        shape.end();
+
+        // Draw lines
+        shape.begin(ShapeRenderer.ShapeType.Line);
+
+        for (int currentMil = 0; currentMil < terrainPoints.length; currentMil += 1) {
 
             if ((currentMil > 0 && currentMil < 401) ||
                 (currentMil > 2133 && currentMil < 2533) ||
                 (currentMil > 4267 && currentMil < 4667)) {
 
+                float currentDistance = terrainPoints[currentMil] + 5;
+                float currentAngle = currentMil * Constants.MILS_TO_RADIANS;
+                float currentX = this.x + currentDistance * (float)Math.cos(currentAngle);
+                float currentY = this.y + currentDistance * (float)Math.sin(currentAngle);
 
+                float nextAngle = (currentMil+1) * Constants.MILS_TO_RADIANS;
+                float nextX = this.x + currentDistance * (float)Math.cos(nextAngle);
+                float nextY = this.y + currentDistance * (float)Math.sin(nextAngle);
+
+                shape.setColor(Color.GREEN);
+                shape.line(currentX, currentY, nextX, nextY);
             }
         }
-
+        shape.end();
     }
 
 

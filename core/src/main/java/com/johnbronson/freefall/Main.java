@@ -45,10 +45,9 @@ public class Main extends ApplicationAdapter {
         font.draw(batch, "Hello World!", 0, 0);
         batch.end();
 
-        shape.begin(ShapeRenderer.ShapeType.Filled);
+
         planet1.draw(shape);
         planet2.draw(shape);
-        shape.end();
     }
 
     public void handleInput() {
