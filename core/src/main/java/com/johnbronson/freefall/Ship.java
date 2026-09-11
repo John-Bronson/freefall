@@ -1,7 +1,7 @@
 package com.johnbronson.freefall;
 
-import com.badlogic.gdx.graphics.Texture;
-import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 
 public class Ship {
 
@@ -12,14 +12,10 @@ public class Ship {
     float maxSpeed = 300;
     float acceleration = 250;
 
-    Texture shipTexture;
-
-
     public Ship(float x, float y, int angle) {
         this.x = x;
         this.y = y;
         this.angle = angle;
-        shipTexture = new Texture("ship.png");
     }
 
     public void setAngle(float angle) {
@@ -29,8 +25,28 @@ public class Ship {
     public float getAngle() {
         return angle;
     }
-
-    public void draw(SpriteBatch batch) {
-        batch.draw(shipTexture, x, y);
+    
+    public void draw(ShapeRenderer shape) {
+        float size = 12;
+        float noseX = x + size * (float)Math.cos(angle * Constants.MILS_TO_RADIANS);
+        float noseY = y + size * (float)Math.sin(angle * Constants.MILS_TO_RADIANS);
+        
+        float leftAngle = angle - 1600;
+        float leftX = x + size * 0.5f * (float)Math.cos(leftAngle * Constants.MILS_TO_RADIANS);
+        float leftY = y + size * 0.5f * (float)Math.sin(leftAngle * Constants.MILS_TO_RADIANS);
+        
+        float rightAngle = angle + 1600;
+        float rightX = x + size * 0.5f * (float)Math.cos(rightAngle * Constants.MILS_TO_RADIANS);
+        float rightY = y + size * 0.5f * (float)Math.sin(rightAngle * Constants.MILS_TO_RADIANS);
+        
+        shape.begin(ShapeRenderer.ShapeType.Line);
+        shape.setColor(Color.WHITE);
+        shape.triangle(noseX, noseY, leftX, leftY, rightX, rightY);
+        shape.end();
+    }
+    
+    public void update(float deltaTime) {
+        x += vx * deltaTime;
+        y += vy * deltaTime;
     }
 }

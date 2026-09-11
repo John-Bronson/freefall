@@ -45,6 +45,8 @@ public class Main extends ApplicationAdapter {
         batch.setProjectionMatrix(cam.combined);
         shape.setProjectionMatrix(cam.combined);
 
+        ship.update(Gdx.graphics.getDeltaTime());
+
         batch.begin();
         font.draw(batch, "Hello World!", 0, 0);
         batch.end();
@@ -53,17 +55,30 @@ public class Main extends ApplicationAdapter {
         planet1.draw(shape);
         planet2.draw(shape);
 
-        batch.begin();
-        ship.draw(batch);
-        batch.end();
+        ship.draw(shape);
     }
 
     public void handleInput() {
         if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) {
             Gdx.app.exit();
-        } if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)) {
-            ship.setAngle(ship.getAngle() - DEGREES_TO_MILS * 15);
-        } if (Gdx.input.isKeyJustPressed(Input.Keys.A)) {
+        } if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) {
+            ship.setAngle(ship.getAngle() + Constants.DEGREES_TO_MILS * 360 * Gdx.graphics.getDeltaTime());
+        } if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) {
+            ship.setAngle(ship.getAngle() - Constants.DEGREES_TO_MILS * 360 * Gdx.graphics.getDeltaTime());
+        }
+        
+        float thrustAmount = 0;
+        if (Gdx.input.isKeyPressed(Input.Keys.UP)) {
+            thrustAmount = ship.acceleration;
+        }
+        
+        if (thrustAmount != 0) {
+            double angleRad = ship.angle * Constants.MILS_TO_RADIANS;
+            ship.vx += (float)Math.cos(angleRad) * thrustAmount * Gdx.graphics.getDeltaTime();
+            ship.vy += (float)Math.sin(angleRad) * thrustAmount * Gdx.graphics.getDeltaTime();
+        }
+        
+        if (Gdx.input.isKeyJustPressed(Input.Keys.A)) {
             cam.translate(cam.zoom * -100, 0, 0);
         } if (Gdx.input.isKeyJustPressed(Input.Keys.D)) {
             cam.translate(cam.zoom * 100, 0, 0);
