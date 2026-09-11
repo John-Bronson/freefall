@@ -15,7 +15,6 @@
 - [ ] Define atmosphere radius for each planet (larger than planet radius)
 - [ ] Add visual rendering for atmosphere (semi-transparent gradient/circle)
 - [ ] Add debug visualization: color-code flat zones, show atmosphere boundaries
-- [ ] Position space station sprite in orbit around planet 1 (static for now, will move in Phase 8)
 - [ ] Test: Do the landing zones look reasonable? Can you visually identify them?
 
 ## Phase 2: Ship Rendering, Orientation & Basic Controls
@@ -103,6 +102,12 @@
 - [ ] Landing zones are now moving targets
 - [ ] Atmosphere rotates with the planet
 - [ ] Test: Can you still land? Is rotation speed balanced with gameplay?
+
+## Phase 9.5: Space Station
+
+- [ ] Position space station sprite in orbit around planet 1
+- [ ] Station orbits with the moving/rotating planet system
+- [ ] Test: Does the station move consistently with the rest of the world?
 
 ## Phase 10: Polish, Tuning & Dynamic Music
 
