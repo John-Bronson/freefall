@@ -10,6 +10,8 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.utils.ScreenUtils;
 
+import static com.johnbronson.freefall.Constants.DEGREES_TO_MILS;
+
 /** {@link com.badlogic.gdx.ApplicationListener} implementation shared by all platforms. */
 public class Main extends ApplicationAdapter {
     private SpriteBatch batch;
@@ -18,6 +20,7 @@ public class Main extends ApplicationAdapter {
     private OrthographicCamera cam;
     private Planet planet1;
     private Planet planet2;
+    private Ship ship;
     private ShapeRenderer shape;
 
     @Override
@@ -30,6 +33,7 @@ public class Main extends ApplicationAdapter {
         planet1 = new Planet(-400, 0);
         planet2 = new Planet(400, 0);
         shape = new ShapeRenderer();
+        ship = new Ship(0, 0, 45);
     }
 
     @Override
@@ -48,18 +52,24 @@ public class Main extends ApplicationAdapter {
 
         planet1.draw(shape);
         planet2.draw(shape);
+
+        batch.begin();
+        ship.draw(batch);
+        batch.end();
     }
 
     public void handleInput() {
         if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) {
             Gdx.app.exit();
         } if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)) {
+            ship.setAngle(ship.getAngle() - DEGREES_TO_MILS * 15);
+        } if (Gdx.input.isKeyJustPressed(Input.Keys.A)) {
             cam.translate(cam.zoom * -100, 0, 0);
-        } if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT)) {
+        } if (Gdx.input.isKeyJustPressed(Input.Keys.D)) {
             cam.translate(cam.zoom * 100, 0, 0);
-        } if (Gdx.input.isKeyJustPressed(Input.Keys.UP)) {
+        } if (Gdx.input.isKeyJustPressed(Input.Keys.W)) {
             cam.translate(0, cam.zoom * 100, 0);
-        } if (Gdx.input.isKeyJustPressed(Input.Keys.DOWN)) {
+        } if (Gdx.input.isKeyJustPressed(Input.Keys.S)) {
             cam.translate(0, cam.zoom * -100, 0);
         } if (Gdx.input.isKeyJustPressed(Input.Keys.Z)) {
             cam.zoom += 0.1f;

@@ -30,12 +30,12 @@ Freefall is a Lunar Lander-style game built with LibGDX (1.14.0) and Java 21. Th
 - `assets/` — Game assets (`ship.png`, `libgdx.png`). This is the working directory at runtime.
 
 **Key classes (all in `com.johnbronson.freefall`):**
-- `Main` — Game entry point (`ApplicationAdapter`). Owns the camera, planets, and game loop.
-- `Planet` — Generates terrain and landing zones. Draws itself using `ShapeRenderer` (filled triangles for terrain, lines for landing zone callouts).
-- `Ship` — Lander. Currently an empty stub; Phase 2 adds position, angle, velocity, and `SpriteBatch` rendering of `ship.png`.
+- `Main` — Game entry point (`ApplicationAdapter`). Owns the camera, planets, ship, and game loop.
+- `Planet` — Generates terrain and landing zones. Draws itself using `ShapeRenderer` (semi-transparent atmosphere circle, filled triangles for terrain, lines for landing zone callouts).
+- `Ship` — Lander with position, angle, velocity, max speed, and acceleration. Renders `ship.png` via `SpriteBatch`.
 - `Constants` — Angular measurement system using military mils (6400 mils = 360°). Conversion factors between mils, radians, and degrees.
 
-**Coordinate system:** World coordinates with barycenter at origin (0,0). Planets are at (-400, 0) and (400, 0). Camera is an `OrthographicCamera` with manual pan (arrow keys) and zoom (Z/X).
+**Coordinate system:** World coordinates with barycenter at origin (0,0). Planets are at (-400, 0) and (400, 0). Camera is an `OrthographicCamera` with manual pan (WASD) and zoom (Z/X). Left arrow rotates the ship; Q quits.
 
 **Terrain system:** Each planet stores 6400 terrain height values (one per mil). Terrain is rendered as triangles from planet center to adjacent surface points. Landing zones are flat sections at fixed mil ranges (0-400, 2133-2533, 4267-4667) drawn with yellow line overlays.
 

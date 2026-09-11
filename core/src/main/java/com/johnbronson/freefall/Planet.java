@@ -1,5 +1,7 @@
 package com.johnbronson.freefall;
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 
 public class Planet {
@@ -7,13 +9,15 @@ public class Planet {
     int landingHeight = 105;
     float x, y, radius;
     Color color;
+    Color atmosphereColor;
     float[] terrainPoints = new float[Constants.MILS_PER_CIRCLE];
 
     public Planet(float x, float y, float radius) {
         this.x = x;
         this.y = y;
         this.radius = radius;
-        this.color = Color.WHITE;
+        this.color = Color.GREEN;
+        this.atmosphereColor = new Color(0.5f, 0.5f, 1f, 0.3f);
         terrainPoints = generateTerrain();
         makeLandingZones();
         System.out.println("First terrain point: " + terrainPoints[0]);
@@ -29,9 +33,17 @@ public class Planet {
         // Draw shapes
         shape.begin(ShapeRenderer.ShapeType.Filled);
 
+        // Draw atmosphere
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        shape.setColor(atmosphereColor);
+        shape.circle(x, y, radius * 1.3f);
+
         shape.setColor(color);
-//         shape.circle(x, y, radius);
-        // draw all the triangles
+
+
+
+         // draw all the triangles
         int step = 50;
         for (int currentMil = 0; currentMil < terrainPoints.length; currentMil += step) {
 
@@ -63,7 +75,7 @@ public class Planet {
                 (currentMil > 2133 && currentMil < 2533) ||
                 (currentMil > 4267 && currentMil < 4667)) {
 
-                float currentDistance = terrainPoints[currentMil] + 5;
+                float currentDistance = terrainPoints[currentMil] + 1;
                 float currentAngle = currentMil * Constants.MILS_TO_RADIANS;
                 float currentX = this.x + currentDistance * (float)Math.cos(currentAngle);
                 float currentY = this.y + currentDistance * (float)Math.sin(currentAngle);
@@ -72,7 +84,7 @@ public class Planet {
                 float nextX = this.x + currentDistance * (float)Math.cos(nextAngle);
                 float nextY = this.y + currentDistance * (float)Math.sin(nextAngle);
 
-                shape.setColor(Color.GREEN);
+                shape.setColor(Color.YELLOW);
                 shape.line(currentX, currentY, nextX, nextY);
             }
         }
