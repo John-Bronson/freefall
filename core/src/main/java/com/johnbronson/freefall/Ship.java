@@ -13,7 +13,7 @@ public class Ship {
     float acceleration = 250;
 
     float solidBoostFuel = 1.0f;
-    float mainFuel = 10.0f;
+    float mainFuel = 5.0f;
 
     static final float SOLID_BOOST_DURATION = 2f;
     float solidBoostTimer = 0f;
