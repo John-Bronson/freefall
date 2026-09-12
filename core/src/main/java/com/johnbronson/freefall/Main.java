@@ -18,10 +18,12 @@ public class Main extends ApplicationAdapter {
     private Texture image;
     private BitmapFont font;
     private OrthographicCamera cam;
+    private OrthographicCamera hudCam;
     private Planet planet1;
     private Planet planet2;
     private Ship ship;
     private ShapeRenderer shape;
+    private HUD hud;
 
     @Override
     public void create() {
@@ -30,10 +32,13 @@ public class Main extends ApplicationAdapter {
         font = new BitmapFont();
         cam = new OrthographicCamera(800, 600);
         cam.position.set(0,0, 0);
+        hudCam = new OrthographicCamera(800, 600);
+        hudCam.setToOrtho(false, 800, 600);
         planet1 = new Planet(-400, 0);
         planet2 = new Planet(400, 0);
         shape = new ShapeRenderer();
         ship = new Ship(0, 0, 45);
+        hud = new HUD(ship);
     }
 
     @Override
@@ -48,15 +53,11 @@ public class Main extends ApplicationAdapter {
         ship.applyGravity(planet1, planet2, Gdx.graphics.getDeltaTime());
         ship.update(Gdx.graphics.getDeltaTime());
 
-        batch.begin();
-        font.draw(batch, "Hello World!", 0, 0);
-        batch.end();
-
-
         planet1.draw(shape);
         planet2.draw(shape);
-
         ship.draw(shape);
+
+        hud.render(batch);
     }
 
     public void handleInput() {
@@ -69,8 +70,13 @@ public class Main extends ApplicationAdapter {
         }
         
         float thrustAmount = 0;
-        if (Gdx.input.isKeyPressed(Input.Keys.UP)) {
-            thrustAmount = ship.acceleration;
+        if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
+            ship.useSolidBoost();
+        } else if (Gdx.input.isKeyPressed(Input.Keys.UP)) {
+            float fuelConsumptionRate = 1.0f;
+            if (ship.consumeMainFuel(fuelConsumptionRate * Gdx.graphics.getDeltaTime())) {
+                thrustAmount = ship.acceleration;
+            }
         }
         
         if (thrustAmount != 0) {
@@ -99,5 +105,6 @@ public class Main extends ApplicationAdapter {
         batch.dispose();
         image.dispose();
         shape.dispose();
+        hud = null;
     }
 }

@@ -9,4 +9,6 @@ public class Constants
     public static final float DEGREES_TO_MILS = 6400f / 360f;  // ≈ 17.778
 
     public static final float GRAVITATIONAL_CONSTANT = 800000f;
+
+    public static final float SOLID_BOOST_ACCELERATION = 150f;
 }
