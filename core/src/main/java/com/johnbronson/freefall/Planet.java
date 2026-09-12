@@ -7,7 +7,7 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 public class Planet {
     private static final float DEFAULT_RADIUS = 100;
     int landingHeight = 105;
-    float x, y, radius;
+    float x, y, radius, mass;
     Color color;
     Color atmosphereColor;
     float[] terrainPoints = new float[Constants.MILS_PER_CIRCLE];
@@ -16,6 +16,7 @@ public class Planet {
         this.x = x;
         this.y = y;
         this.radius = radius;
+        this.mass = 1.0f;
         this.color = Color.GREEN;
         this.atmosphereColor = new Color(0.5f, 0.5f, 1f, 0.3f);
         terrainPoints = generateTerrain();

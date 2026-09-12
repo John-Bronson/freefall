@@ -17,16 +17,16 @@
 - [ ] Add debug visualization: color-code flat zones, show atmosphere boundaries
 - [ ] Test: Do the landing zones look reasonable? Can you visually identify them?
 
-## Phase 2: Ship Rendering, Orientation & Basic Controls
+## Phase 2: Ship Rendering, Orientation & Basic Controls ✓
 
-- [ ] Add lander sprite at a starting position on planet 1's surface
-- [ ] Ship has facing direction/angle (for heat shield orientation)
-- [ ] Implement rotation controls (left/right arrows rotate the ship)
-- [ ] Implement thrust (up arrow) - applies force in direction ship is facing
-- [ ] Render thrust flame/particle effect when thrusting
-- [ ] Visual indicator for heat shield direction (maybe different colored nose)
-- [ ] Add velocity vector debug display (arrow showing ship's current velocity)
-- [ ] Test: Can you thrust around and rotate? Does the ship respond predictably?
+- [x] Add lander sprite at a starting position on planet 1's surface
+- [x] Ship has facing direction/angle (for heat shield orientation)
+- [x] Implement rotation controls (left/right arrows rotate the ship)
+- [x] Implement thrust (up arrow) - applies force in direction ship is facing
+- [x] Render thrust flame/particle effect when thrusting
+- [x] Visual indicator for heat shield direction (maybe different colored nose)
+- [x] Add velocity vector debug display (arrow showing ship's current velocity)
+- [x] Test: Can you thrust around and rotate? Does the ship respond predictably?
 
 ## Phase 3: Gravity, Fuel & Atmospheric Drag
 

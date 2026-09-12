@@ -7,4 +7,6 @@ public class Constants
     public static final float MILS_TO_DEGREES = 360f / 6400f;  // ≈ 0.05625
     public static final float RADIANS_TO_MILS = 6400f / (2f * (float)Math.PI);
     public static final float DEGREES_TO_MILS = 6400f / 360f;  // ≈ 17.778
+
+    public static final float GRAVITATIONAL_CONSTANT = 800000f;
 }

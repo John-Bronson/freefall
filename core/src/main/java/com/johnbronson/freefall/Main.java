@@ -45,6 +45,7 @@ public class Main extends ApplicationAdapter {
         batch.setProjectionMatrix(cam.combined);
         shape.setProjectionMatrix(cam.combined);
 
+        ship.applyGravity(planet1, planet2, Gdx.graphics.getDeltaTime());
         ship.update(Gdx.graphics.getDeltaTime());
 
         batch.begin();

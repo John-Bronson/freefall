@@ -49,4 +49,28 @@ public class Ship {
         x += vx * deltaTime;
         y += vy * deltaTime;
     }
+    
+    public void applyGravity(Planet planet1, Planet planet2, float deltaTime) {
+        applyGravityFromPlanet(planet1, deltaTime);
+        applyGravityFromPlanet(planet2, deltaTime);
+    }
+    
+    private void applyGravityFromPlanet(Planet planet, float deltaTime) {
+        float dx = planet.x - x;
+        float dy = planet.y - y;
+        float distSquared = dx * dx + dy * dy;
+        
+        float minDist = planet.radius + 10f;
+        if (distSquared < minDist * minDist) {
+            distSquared = minDist * minDist;
+        }
+        
+        float gravityAccel = Constants.GRAVITATIONAL_CONSTANT * planet.mass / distSquared;
+        float dist = (float)Math.sqrt(distSquared);
+        float unitX = dx / dist;
+        float unitY = dy / dist;
+        
+        vx += unitX * gravityAccel * deltaTime;
+        vy += unitY * gravityAccel * deltaTime;
+    }
 }
