@@ -49,6 +49,11 @@ public class Ship {
         shape.setColor(Color.WHITE);
         shape.triangle(noseX, noseY, leftX, leftY, rightX, rightY);
         shape.end();
+
+        shape.begin(ShapeRenderer.ShapeType.Filled);
+        shape.setColor(Color.RED);
+        shape.circle(x, y, 2);
+        shape.end();
     }
 
     public void update(float deltaTime) {
@@ -97,7 +102,7 @@ public class Ship {
 
     public boolean useSolidBoost() {
         if (solidBoostFuel > 0) {
-            solidBoostFuel = 0;
+            solidBoostFuel -= 1;
             solidBoostTimer = SOLID_BOOST_DURATION;
             return true;
         }
