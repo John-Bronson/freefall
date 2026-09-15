@@ -39,6 +39,17 @@ Freefall is a Lunar Lander-style game built with LibGDX (1.14.0) and Java 21. Th
 
 **Terrain system:** Each planet stores 6400 terrain height values (one per mil). Terrain is rendered as triangles from planet center to adjacent surface points. Landing zones are flat sections at fixed mil ranges (0-400, 2133-2533, 4267-4667) drawn with yellow line overlays.
 
+## LibGDX Documentation
+
+The official LibGDX API documentation is hosted at: https://javadoc.io/doc/com.badlogicgames.gdx
+
+**Online docs** contain the complete API reference for all modules.
+
+**Local javadoc jars** are cached in Gradle's module cache and can be viewed in your IDE:
+- `gdx-1.14.0-javadoc.jar` — Core API (Camera, Graphics, Input, etc.)
+- `gdx-backend-lwjgl3-1.14.0-javadoc.jar` — Desktop backend
+- `gdx-controllers-core-2.2.3-javadoc.jar` — Controller support
+
 ## Development Status
 
 See `plan.md` for the full phased development plan. Phase 0 (foundation) is complete. Phase 1 (terrain/atmosphere) is mostly complete. Phase 2 (ship controls/movement) is next.
