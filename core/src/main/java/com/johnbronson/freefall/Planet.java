@@ -5,8 +5,12 @@ import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 
 public class Planet {
-    private static final float DEFAULT_RADIUS = 100;
-    int landingHeight = 105;
+    private static final float DEFAULT_RADIUS = 300;
+    float minHeight = 1.0f;
+    float maxHeight = 1.3f;
+    float landingHeight = 1.15f;
+    float atmosphereHeight = 1.5f;
+
     float x, y, radius, mass;
     Color color;
     Color atmosphereColor;
@@ -38,7 +42,7 @@ public class Planet {
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shape.setColor(atmosphereColor);
-        shape.circle(x, y, radius * 1.3f);
+        shape.circle(x, y, radius * atmosphereHeight);
 
         shape.setColor(color);
 
@@ -95,8 +99,8 @@ public class Planet {
 
     private float[] generateTerrain () {
         float[] calculatedTerrainPoints = new float[Constants.MILS_PER_CIRCLE];
-        float max = 110;
-        float min = 100;
+        float max = DEFAULT_RADIUS * maxHeight;
+        float min = DEFAULT_RADIUS * minHeight;
 
         for (int i = 0; i < calculatedTerrainPoints.length; i++) {
             calculatedTerrainPoints[i] = randomFloat(min, max);
@@ -120,7 +124,7 @@ public class Planet {
 
     private void makeOneLandingZone(int start, int finish) {
         for (int i = start; i < finish; i++) {
-            terrainPoints[i] = this.landingHeight;
+            terrainPoints[i] = DEFAULT_RADIUS * landingHeight;
         }
     }
 }

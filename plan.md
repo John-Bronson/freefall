@@ -9,13 +9,13 @@
 
 ## Phase 1: Terrain & Atmosphere Zones
 
-- [ ] Generate random terrain as height values around each planetoid's circumference
-- [ ] Implement algorithm to create flat landing zones (minimum 3-4 per planet)
-- [ ] Render terrain sprites/polygons on each planet
-- [ ] Define atmosphere radius for each planet (larger than planet radius)
-- [ ] Add visual rendering for atmosphere (semi-transparent gradient/circle)
-- [ ] Add debug visualization: color-code flat zones, show atmosphere boundaries
-- [ ] Test: Do the landing zones look reasonable? Can you visually identify them?
+- [x] Generate random terrain as height values around each planetoid's circumference
+- [x] Implement algorithm to create flat landing zones (minimum 3-4 per planet)
+- [x] Render terrain sprites/polygons on each planet
+- [x] Define atmosphere radius for each planet (larger than planet radius)
+- [x] Add visual rendering for atmosphere (semi-transparent gradient/circle)
+- [x] Add debug visualization: color-code flat zones, show atmosphere boundaries
+- [x] Test: Do the landing zones look reasonable? Can you visually identify them?
 
 ## Phase 2: Ship Rendering, Orientation & Basic Controls ✓
 
@@ -30,9 +30,9 @@
 
 ## Phase 3: Gravity, Fuel & Atmospheric Drag
 
-- [ ] Implement gravity from both planetoids (inverse-square law or simplified)
-- [ ] Add fuel counter to HUD
-- [ ] Thrust consumes fuel
+- [x] Implement gravity from both planetoids (inverse-square law or simplified)
+- [x] Add fuel counter to HUD
+- [x] Thrust consumes fuel
 - [ ] Detect when ship enters atmosphere zone (distance check from planet center)
 - [ ] Apply atmospheric drag when in atmosphere (slows ship down)
 - [ ] Calculate heat buildup based on velocity and angle relative to direction of travel
