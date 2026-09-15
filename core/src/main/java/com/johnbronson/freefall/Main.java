@@ -45,8 +45,8 @@ public class Main extends ApplicationAdapter implements ControllerListener {
         cam.position.set(0,0, 0);
         hudCam = new OrthographicCamera(800, 600);
         hudCam.setToOrtho(false, 800, 600);
-        planet1 = new Planet(-800, 0);
-        planet2 = new Planet(800, 0);
+        planet1 = new Planet(-1200, 0);
+        planet2 = new Planet(1200, 0);
         shape = new ShapeRenderer();
         ship = new Ship(0, 0, 45);
         hud = new HUD(ship);

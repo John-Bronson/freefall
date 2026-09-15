@@ -9,7 +9,7 @@ public class Planet {
     float minHeight = 1.0f;
     float maxHeight = 1.3f;
     float landingHeight = 1.15f;
-    float atmosphereHeight = 1.5f;
+    float atmosphereHeight = 1.6f;
 
     float x, y, radius, mass;
     Color color;
