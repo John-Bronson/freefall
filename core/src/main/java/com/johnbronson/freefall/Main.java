@@ -41,6 +41,7 @@ public class Main extends ApplicationAdapter implements ControllerListener {
         image = new Texture("libgdx.png");
         font = new BitmapFont();
         cam = new OrthographicCamera(800, 600);
+        cam.zoom = 2f;
         cam.position.set(0,0, 0);
         hudCam = new OrthographicCamera(800, 600);
         hudCam.setToOrtho(false, 800, 600);
