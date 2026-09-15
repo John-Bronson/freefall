@@ -42,6 +42,47 @@
 - [ ] Add debug toggles: gravity on/off, infinite fuel, invincibility (no heat damage)
 - [ ] Test: Does gravity feel strong enough to matter but not overwhelming? Is fuel consumption rate reasonable?
 
+## Phase 3.5: Physics Refactor & Trajectory Prediction
+
+Goal: draw a "coast" line ahead of the ship showing where it will go under gravity (and later drag) if the player stops thrusting. The predictor must run the *exact same* physics code as the real ship, on a throwaway copy of the state, so the line is deterministic.
+
+### Refactor summary (do this first)
+
+The current physics is split across `Ship.applyGravity`, `Ship.update`, and the call order in `Main.render`, and every piece mutates `Ship`'s fields directly. That makes it impossible to "fast forward" without moving the real ship. The refactor:
+
+- [ ] Introduce a small mutable **physics state** type holding `x, y, vx, vy` (and `angle`, `solidBoostTimer` if boost is included in prediction). `Ship` owns one instance. Consider a `copyFrom(other)` method so the predictor can reuse a scratch instance instead of allocating.
+- [ ] Extract gravity into a **pure function** that computes acceleration at an arbitrary point and writes it into a caller-supplied `Vector2` (no `new` per call). Signature shape: `gravityAt(px, py, planet, Vector2 out)`. Neither `Ship` nor `Planet` fields are mutated by it.
+- [ ] Decide where `step` lives. **Decision: a `PhysicsWorld` class.** It owns the list of planets (and later the station / any other gravity source) and exposes `step(PhysicsState state, float dt)`. This mirrors Box2D's `World.step()` convention and keeps data (`PhysicsState`) separate from behavior (`PhysicsWorld`). `Main` creates one instance and passes it to whatever needs it (ship, predictor); no static singleton.
+- [ ] `step` does, in fixed order: sum gravity from all bodies, add boost acceleration if timer > 0, apply drag (Phase 3), update velocity, then update position (semi-implicit Euler). `Ship.update` becomes a thin call to `world.step(state, dt)`. `Main` no longer calls `applyGravity` and `update` separately.
+- [ ] `PhysicsWorld` stores planets as a collection (`Array<Planet>` or `List<Planet>`), not `planet1, planet2` fields, so adding bodies later (station, Phase 7+) is free.
+- [ ] Switch the game to a **fixed timestep**: accumulate `getDeltaTime()` and call `step` in constant chunks (e.g. 1/120s). The predictor uses the same constant. See Glenn Fiedler, "Fix Your Timestep". This is what makes the prediction match the real flight exactly.
+- [ ] Test: ship flies identically before and after the refactor. Gravity, boost, and thrust feel unchanged.
+
+Ownership after the refactor (dependencies point one way, from user to used):
+
+```
+Main                 creates everything, wires it together, owns the fixed-timestep accumulator
+PhysicsWorld         has-a List<Planet>;  does step(PhysicsState, dt), gravityAt(...)
+Ship                 has-a PhysicsState;  delegates update to world.step
+TrajectoryPredictor  has-a PhysicsWorld, a scratch PhysicsState, a FloatArray of points
+```
+
+### Predictor
+
+- [ ] Add a `TrajectoryPredictor` class (separate responsibility from `Ship`). Constructed with a `PhysicsWorld` reference. Input: ship state. Output: a reused `FloatArray` of predicted x,y pairs.
+- [ ] Each frame: copy the ship's state into a scratch state, call `world.step` N times with the fixed dt, record position after each step. N ≈ seconds-ahead / dt (start with 5s).
+- [ ] Prediction assumes no player thrust. Include remaining solid boost, since that fires regardless of input.
+- [ ] Stop early when the predicted point hits a planet. First pass: distance to center < radius. Later: look up terrain height at the point's mil angle around the planet (Phase 4 reuses this for real collision).
+- [ ] Draw the path with `ShapeRenderer` in a single `begin`/`end` block. Fade alpha along the line or dot every other segment.
+- [ ] Expose the predicted impact point (if any) for a future HUD marker.
+- [ ] Zero allocation per frame: no `new Vector2` / `new ArrayList` inside the loop. Verify with `Gdx.app.getJavaHeap()` on the debug HUD (flat, not sawtooth).
+- [ ] Measure cost with `System.nanoTime()` around the predict call; show rolling avg + max on debug HUD. Ignore the first few seconds (JIT warmup). Target: well under 1ms.
+- [ ] Test: with hands off the controls, does the ship follow the line exactly? Does the line update sensibly when rotating/thrusting?
+
+### Notes for drag (Phase 3)
+
+Drag depends on velocity, not position, and opposes it. With a large step it can overshoot and reverse velocity, causing jitter or instability. Keep the predictor's dt equal to the game's dt (a correctness requirement, not just accuracy), and clamp the per-step drag impulse so it never removes more speed than the ship has. The `density * speed` product computed for drag is also the input for heat buildup.
+
 ## Phase 4: Collision Detection
 
 - [ ] Implement collision detection between ship and terrain (per-planet local space)
@@ -132,6 +173,7 @@
 - [ ] F2: Toggle infinite fuel
 - [ ] F3: Toggle collision on/off
 - [ ] F4: Toggle debug overlays (vectors, bounds, zones)
+- [ ] F4 (or separate key): Toggle trajectory prediction line
 - [ ] F5: Slow motion (0.25x speed)
 - [ ] F6: Teleport ship to planet 2
 - [ ] F7: Refill fuel
