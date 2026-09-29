@@ -406,10 +406,10 @@ a { color: var(--orbit); }
 <header class="masthead">
   <div class="eyebrow">Freefall · Study guide · LibGDX 1.14 / Box2D</div>
   <h1>Box2D Flight Manual</h1>
-  <p class="lede">How the physics engine inside Freefall works, explained through your own code: what each piece is, what happens every frame, and why the recent bugs happened.</p>
+  <p class="lede">How the physics engine inside Freefall works, explained through the game's own code: what each piece is, what happens every step, and why the code is shaped the way it is.</p>
   <div class="legend" aria-label="Color key">
     <span><i class="swatch" style="background:var(--orbit)"></i>Box2D world (meters)</span>
-    <span><i class="swatch" style="background:var(--pixel)"></i>Your rendering (pixels)</span>
+    <span><i class="swatch" style="background:var(--pixel)"></i>Rendering &amp; screen</span>
     <span><i class="swatch" style="background:var(--thrust)"></i>Forces &amp; warnings</span>
   </div>
 </header>
@@ -420,8 +420,8 @@ a { color: var(--orbit); }
     <ol>
       <li><a href="#model">The mental model</a></li>
       <li><a href="#blocks">Building blocks</a></li>
-      <li><a href="#units">Meters &amp; pixels</a></li>
-      <li><a href="#loop">The frame loop</a></li>
+      <li><a href="#units">One unit: meters</a></li>
+      <li><a href="#loop">The fixed-step loop</a></li>
       <li><a href="#moving">Moving a body</a></li>
       <li><a href="#gravity">Planet gravity</a></li>
       <li><a href="#shapes">Shapes &amp; fixtures</a></li>
@@ -429,6 +429,7 @@ a { color: var(--orbit); }
       <li><a href="#sleep">Sleeping</a></li>
       <li><a href="#debug">Debug renderer</a></li>
       <li><a href="#gotchas">Gotchas</a></li>
+      <li><a href="#testing">Testing headless</a></li>
       <li><a href="#next">Next experiments</a></li>
     </ol>
   </nav>
@@ -443,13 +444,20 @@ a { color: var(--orbit); }
 <pre><code><span class="c">// the old way, in Ship.update()</span>
 vx += cos(angle) * acceleration * dt;
 x  += vx * dt;</code></pre>
-      <p>Box2D replaces that arithmetic. You describe the world once (what objects exist, their shapes and masses) and then, every frame, you tell it which forces are acting. Box2D advances time, moves everything, detects collisions and pushes overlapping objects apart. You read the results back and draw them.</p>
-      <p>The key shift: <strong>you no longer own position and velocity</strong>. The ship's <code>x</code> and <code>y</code> fields are gone. The truth lives inside Box2D, and <code>Ship.getX()</code> asks for it.</p>
+      <p>Box2D replaces that arithmetic. You describe the world once: what objects exist, and their shapes and masses. Then before every step you tell it which forces are acting. Box2D advances time, moves everything, detects collisions and pushes overlapping objects apart. You read the results back and draw them.</p>
+      <p>The key shift: <strong>you no longer own position and velocity</strong>. The truth lives inside Box2D. <code>ship.getBody().getPosition()</code> asks for it, and nothing in the game ever assigns it.</p>
 
       <div class="aside angular">
         <span class="tag">Angular comparison</span>
-        <p>Think of the Box2D <code>World</code> as a store like NgRx. You don't assign to state directly; you dispatch actions (apply forces) and a reducer (<code>world.step()</code>) computes the next state. Components (your <code>draw()</code> methods) select from the store and render.</p>
+        <p>Think of the Box2D <code>World</code> as a store like NgRx. You don't assign to state directly. You dispatch actions (apply forces), and a reducer (<code>world.step()</code>) computes the next state. Renderers select from the store and draw.</p>
       </div>
+
+      <p>Freefall's code is split along that line:</p>
+      <ul>
+        <li><strong><code>physics/</code></strong>: generic Box2D plumbing. <code>PhysicsWorld</code> owns the <code>World</code> and the fixed-step loop.</li>
+        <li><strong><code>world/</code></strong>: the game model. <code>GameWorld</code>, <code>Planet</code>, <code>Ship</code>, gravity and the contact listener. It never draws.</li>
+        <li><strong><code>render/</code></strong>: the view. It reads body transforms and draws them. Pixel art will replace the classes here and nothing else.</li>
+      </ul>
 
       <p>One more thing to know up front: Box2D is a C++ library. LibGDX wraps it with a thin Java layer that calls into native code. That explains several of its habits, like the "def" objects, <code>dispose()</code> calls, and reused return values covered below.</p>
     </section>
@@ -467,45 +475,45 @@ x  += vx * dt;</code></pre>
             <!-- World -->
             <rect x="10" y="10" width="740" height="280" rx="4" class="nofill st-orbit" stroke-width="2"/>
             <text x="26" y="36" class="s-orbit disp" font-size="20">WORLD</text>
-            <text x="110" y="36" class="s-soft" font-size="12">PhysicsWorld.getInstance().getWorld()</text>
+            <text x="110" y="36" class="s-soft" font-size="12">owned by PhysicsWorld · gravity (0, 0) · doSleep true</text>
 
             <!-- Ship body -->
             <rect x="30" y="56" width="340" height="214" rx="4" class="nofill st-ink" stroke-width="1.5"/>
             <text x="46" y="80" class="s-ink disp" font-size="17">BODY · ship</text>
-            <text x="46" y="98" class="s-soft" font-size="11">DynamicBody · position · angle · velocity</text>
+            <text x="46" y="98" class="s-soft" font-size="11">DynamicBody · userData = the Ship</text>
             <rect x="50" y="112" width="300" height="140" rx="3" class="nofill st-soft" stroke-width="1" stroke-dasharray="4 3"/>
-            <text x="64" y="134" class="s-ink disp" font-size="15">FIXTURE</text>
-            <text x="64" y="152" class="s-soft" font-size="11">density 1.0 · friction 0.3</text>
-            <text x="64" y="167" class="s-soft" font-size="11">restitution 0.1</text>
+            <text x="64" y="134" class="s-ink disp" font-size="15">FIXTURE · SHIP_HULL</text>
+            <text x="64" y="152" class="s-soft" font-size="11">density → 1000 kg · friction 0.3</text>
+            <text x="64" y="167" class="s-soft" font-size="11">restitution 0.1 · category SHIP</text>
             <rect x="64" y="180" width="270" height="58" rx="3" class="s-paper st-rule" stroke-width="1"/>
             <circle cx="98" cy="209" r="17" class="nofill st-orbit" stroke-width="2"/>
-            <line x1="98" y1="209" x2="115" y2="209" class="st-orbit" stroke-width="1.5"/>
+            <line x1="98" y1="209" x2="98" y2="192" class="st-orbit" stroke-width="1.5"/>
             <text x="128" y="204" class="s-ink disp" font-size="15">SHAPE · CircleShape</text>
-            <text x="128" y="222" class="s-soft" font-size="11">radius 0.6 m</text>
+            <text x="128" y="222" class="s-soft" font-size="11">radius 0.6 m · nose is local +Y</text>
 
             <!-- Planet body -->
             <rect x="390" y="56" width="340" height="214" rx="4" class="nofill st-ink" stroke-width="1.5"/>
             <text x="406" y="80" class="s-ink disp" font-size="17">BODY · planet ×2</text>
-            <text x="406" y="98" class="s-soft" font-size="11">StaticBody · never moves · infinite mass</text>
+            <text x="406" y="98" class="s-soft" font-size="11">StaticBody · userData = the Planet</text>
             <rect x="410" y="112" width="300" height="140" rx="3" class="nofill st-soft" stroke-width="1" stroke-dasharray="4 3"/>
-            <text x="424" y="134" class="s-ink disp" font-size="15">FIXTURE</text>
-            <text x="424" y="152" class="s-soft" font-size="11">default friction · solid (not sensor)</text>
+            <text x="424" y="134" class="s-ink disp" font-size="15">FIXTURE · TERRAIN</text>
+            <text x="424" y="152" class="s-soft" font-size="11">friction 0.8 · category TERRAIN</text>
             <rect x="424" y="180" width="270" height="58" rx="3" class="s-paper st-rule" stroke-width="1"/>
             <polygon points="458,193 470,199 474,211 468,223 455,226 444,219 441,206 447,196" class="nofill st-orbit" stroke-width="2"/>
             <text x="488" y="204" class="s-ink disp" font-size="15">SHAPE · ChainShape</text>
             <text x="488" y="222" class="s-soft" font-size="11">loop of 128 terrain vertices</text>
           </svg>
         </div>
-        <figcaption>Fig. 1. The object tree in Freefall. A body can hold several fixtures (a ship hull plus landing legs, for example); Freefall uses one each.</figcaption>
+        <figcaption>Fig. 1. The object tree in Freefall. A body can hold several fixtures, and a game object can own several bodies. The ship's landing legs will be separate bodies joined to the hull.</figcaption>
       </figure>
 
       <div class="table-wrap">
         <table>
           <thead><tr><th>Piece</th><th>What it is</th><th>In Freefall</th></tr></thead>
           <tbody>
-            <tr><td><strong>World</strong></td><td>The simulation. Owns every body and advances time.</td><td><code>PhysicsWorld</code> wraps one shared <code>World</code>.</td></tr>
+            <tr><td><strong>World</strong></td><td>The simulation. Owns every body and advances time.</td><td><code>PhysicsWorld</code> creates one. <code>GameWorld</code> owns that for the life of the game.</td></tr>
             <tr><td><strong>Body</strong></td><td>A thing with a position, angle and velocity. Has no size or shape on its own.</td><td>The ship, and one per planet.</td></tr>
-            <tr><td><strong>Fixture</strong></td><td>Attaches a shape to a body, plus material properties: density, friction, restitution.</td><td>Created in the <code>Ship</code> and <code>Planet</code> constructors.</td></tr>
+            <tr><td><strong>Fixture</strong></td><td>Attaches a shape to a body, plus material properties: density, friction, restitution, collision filter.</td><td>Created in the <code>Ship</code> and <code>Planet</code> constructors.</td></tr>
             <tr><td><strong>Shape</strong></td><td>Pure geometry, in the body's local coordinates.</td><td><code>CircleShape</code> for the ship, <code>ChainShape</code> for terrain.</td></tr>
           </tbody>
         </table>
@@ -520,14 +528,14 @@ x  += vx * dt;</code></pre>
 
       <h3>Definitions, not constructors</h3>
       <p>You never write <code>new Body()</code>. You fill in a <em>definition</em> and ask the world to build the object, because the world allocates the native C++ memory and must track everything it owns.</p>
-<pre><code><span class="k">BodyDef</span> def = <span class="k">new</span> BodyDef();
-def.type = BodyDef.BodyType.DynamicBody;
-def.position.set(x / PIXELS_PER_METER, y / PIXELS_PER_METER);
-def.fixedRotation = <span class="k">true</span>;
-def.bullet = <span class="k">true</span>;
-body = world.getWorld().<span class="hl">createBody(def)</span>;
-body.setUserData(<span class="k">this</span>);   <span class="c">// link the Box2D body back to our Ship</span></code></pre>
-      <p class="file">Ship.java · constructor</p>
+<pre><code><span class="k">BodyDef</span> bodyDef = <span class="k">new</span> BodyDef();
+bodyDef.type = BodyDef.BodyType.DynamicBody;
+bodyDef.position.set(position);   <span class="c">// meters, straight from the game</span>
+bodyDef.angle = angle;            <span class="c">// radians</span>
+
+body = world.<span class="hl">createBody(bodyDef)</span>;
+body.setUserData(<span class="k">this</span>);   <span class="c">// body → Ship</span></code></pre>
+      <p class="file">world/Ship.java · constructor</p>
       <p>The def is a template. Box2D copies its values, so you could reuse the same def to create many identical bodies.</p>
 
       <div class="check">
@@ -540,202 +548,226 @@ body.setUserData(<span class="k">this</span>);   <span class="c">// link the Box
     <!-- 03 -->
     <section id="units">
       <div class="sec-num">03</div>
-      <h2>Meters &amp; pixels</h2>
+      <h2>One unit: meters</h2>
       <p>Box2D's internal tolerances are tuned for objects roughly <strong>0.1 to 10 meters</strong> across moving at human-scale speeds. Feed it a 600-unit planet and speeds of 300 units per second and it behaves badly: objects jitter, tunnel through walls, or hit hidden speed limits.</p>
-      <p>So Freefall keeps two coordinate systems and converts between them with one constant:</p>
-<pre><code><span class="k">public static final float</span> PIXELS_PER_METER = <span class="hl">10f</span>;</code></pre>
-      <p class="file">PhysicsWorld.java</p>
+      <p>Freefall avoids this by using <strong>meters everywhere</strong>: in physics, in game logic and in the camera. There is no pixels-per-meter conversion anywhere in the code. The camera decides how many meters fit on screen:</p>
+<pre><code><span class="k">private static final float</span> MIN_VIEW_WIDTH = <span class="hl">80f</span>;   <span class="c">// meters</span>
+<span class="k">private static final float</span> MIN_VIEW_HEIGHT = <span class="hl">60f</span>;
+viewport = <span class="k">new</span> ExtendViewport(
+    MIN_VIEW_WIDTH, MIN_VIEW_HEIGHT, camera);</code></pre>
+      <p class="file">render/WorldRenderer.java</p>
 
       <figure>
         <div class="fig-wrap">
           <svg viewBox="0 0 760 170" role="img" aria-labelledby="fig2t">
-            <title id="fig2t">Divide by 10 going into Box2D, multiply by 10 coming out for drawing</title>
-            <rect x="20" y="30" width="250" height="110" rx="4" class="nofill st-pixel" stroke-width="2"/>
-            <text x="38" y="58" class="s-pixel disp" font-size="18">YOUR GAME · PIXELS</text>
-            <text x="38" y="84" class="s-ink" font-size="12">planet radius   600</text>
-            <text x="38" y="104" class="s-ink" font-size="12">planet center  ±2400</text>
-            <text x="38" y="124" class="s-ink" font-size="12">ship radius       6</text>
+            <title id="fig2t">Game and Box2D share meters; only the camera converts meters to screen pixels</title>
+            <rect x="20" y="30" width="300" height="110" rx="4" class="nofill st-orbit" stroke-width="2"/>
+            <text x="38" y="58" class="s-orbit disp" font-size="18">GAME + BOX2D · METERS</text>
+            <text x="38" y="84" class="s-ink" font-size="12">planet radius       60–78</text>
+            <text x="38" y="104" class="s-ink" font-size="12">planet centers       ±240</text>
+            <text x="38" y="124" class="s-ink" font-size="12">ship hull radius      0.6</text>
 
-            <rect x="490" y="30" width="250" height="110" rx="4" class="nofill st-orbit" stroke-width="2"/>
-            <text x="508" y="58" class="s-orbit disp" font-size="18">BOX2D · METERS</text>
-            <text x="508" y="84" class="s-ink" font-size="12">planet radius    60</text>
-            <text x="508" y="104" class="s-ink" font-size="12">planet center  ±240</text>
-            <text x="508" y="124" class="s-ink" font-size="12">ship radius     0.6</text>
+            <rect x="510" y="30" width="230" height="110" rx="4" class="nofill st-pixel" stroke-width="2"/>
+            <text x="528" y="58" class="s-pixel disp" font-size="18">SCREEN · PIXELS</text>
+            <text x="528" y="84" class="s-ink" font-size="12">window     640 × 480</text>
+            <text x="528" y="104" class="s-ink" font-size="12">HUD text   ScreenViewport</text>
+            <text x="528" y="124" class="s-ink" font-size="12">world drawn via camera</text>
 
-            <line x1="285" y1="68" x2="470" y2="68" class="st-ink" stroke-width="1.5"/>
-            <polygon points="470,63 480,68 470,73" class="s-ink"/>
-            <text x="300" y="58" class="s-ink" font-size="12">÷ PIXELS_PER_METER</text>
-            <text x="300" y="88" class="s-soft" font-size="11">createBody, shapes, vertices</text>
-
-            <line x1="480" y1="116" x2="295" y2="116" class="st-ink" stroke-width="1.5"/>
-            <polygon points="295,111 285,116 295,121" class="s-ink"/>
-            <text x="300" y="106" class="s-ink" font-size="12">× PIXELS_PER_METER</text>
-            <text x="300" y="136" class="s-soft" font-size="11">getX(), getY(), draw()</text>
+            <line x1="335" y1="85" x2="492" y2="85" class="st-ink" stroke-width="1.5"/>
+            <polygon points="492,80 502,85 492,90" class="s-ink"/>
+            <text x="345" y="74" class="s-ink" font-size="12">camera.combined</text>
+            <text x="345" y="106" class="s-soft" font-size="11">ExtendViewport 80×60 m</text>
+            <text x="345" y="122" class="s-soft" font-size="11">× camera.zoom</text>
           </svg>
         </div>
-        <figcaption>Fig. 2. The conversion boundary. Physics happens in meters; only drawing and camera code sees pixels.</figcaption>
+        <figcaption>Fig. 2. The only conversion is the camera's projection matrix. The physics, the game rules and the renderers all work in meters.</figcaption>
       </figure>
 
-      <p>A useful habit: whenever you pass a number to Box2D or read one back, ask "which unit is this?" The terrain bug fixed earlier was exactly this kind of mistake. Terrain distances were already in pixels and got multiplied by the radius again, producing a collision ring 600 times too large.</p>
+      <p>An earlier version kept the game in pixels and divided by <code>PIXELS_PER_METER</code> at every Box2D call. That produced two classic bugs. A terrain ring was scaled twice and came out 600 times too large. A booster constant written in px/s² was read by Box2D as m/s², which made it ten times too strong. With one unit, neither mistake can happen.</p>
+
+      <div class="aside">
+        <span class="tag">Pixel art later</span>
+        <p>Pixel art gets its own conversion, and it lives only in the renderer. Pick an art density, for example 16 texture pixels per meter. Then a 24-pixel-tall ship sprite is drawn 24 ÷ 16 = 1.5 m tall. Physics never sees it. For crisp pixels you would also snap camera zoom to whole screen pixels per texture pixel. That too is a camera concern.</p>
+      </div>
 
       <h3>Angles are radians</h3>
-      <p>Box2D measures angles in radians, counter-clockwise from the positive x axis. Freefall thinks in mils (6400 per circle), so the conversion lives at the edge in <code>Ship.setAngle()</code> and <code>Ship.getAngle()</code>, using the factors in <code>Constants</code>.</p>
-
-      <div class="aside warn">
-        <span class="tag">Units check on your constants</span>
-        <p>Every speed and acceleration constant is now read in <strong>meters</strong>. <code>MAIN_THRUST_ACCELERATION = 25</code> means 25 m/s², which is 250 px/s², the same as the old pre-Box2D ship. <code>SOLID_BOOST_ACCELERATION</code> was originally 150, written for the old pixel code (150 px/s²). Box2D read it as 150 m/s², ten times stronger, so it was changed to 15. See the speed-limit gotcha in section 11 for why that mattered.</p>
-      </div>
+      <p>Box2D measures angles in radians, counter-clockwise from the positive x axis. Freefall uses radians throughout and <code>MathUtils.degRad</code> / <code>radDeg</code> when a human-friendly number is needed (e.g. <code>MAX_LANDING_TILT = 15f * MathUtils.degRad</code>).</p>
+      <p>The ship's <strong>nose is local +Y</strong>. A body angle of 0 points the nose straight up the screen, the way sprites are usually drawn. Legs will hang off −Y.</p>
 
       <div class="check">
         <h3>Check yourself</h3>
-        <details><summary>The ship sits at Box2D position (12.5, −3). Where do you draw it?</summary><div><p>At pixel (125, −30). Multiply both coordinates by <code>PIXELS_PER_METER</code>.</p></div></details>
-        <details><summary>You want a landing leg 4 pixels long. What length goes into the shape?</summary><div><p>0.4 meters: 4 ÷ 10.</p></div></details>
+        <details><summary>The window is made twice as wide. What changes in the physics?</summary><div><p>Nothing. <code>ExtendViewport</code> keeps the aspect ratio and shows more meters horizontally. Only the camera's matrix changes, in <code>WorldRenderer.resize()</code>.</p></div></details>
+        <details><summary>You want a landing leg that looks 8 art pixels long at 16 px/m. What length goes into the Box2D shape?</summary><div><p>0.5 meters. The shape is authored in meters. The renderer divides the sprite's pixel size by the art density.</p></div></details>
       </div>
     </section>
 
     <!-- 04 -->
     <section id="loop">
       <div class="sec-num">04</div>
-      <h2>The frame loop</h2>
-      <p>LibGDX calls <code>Main.render()</code> about 60 times per second. Here is what happens inside it, in order:</p>
+      <h2>The fixed-step loop</h2>
+      <p>LibGDX calls <code>Main.render()</code> once per displayed frame, which could be 60, 144 or 37 times a second. Box2D is most stable and repeatable when every step is <strong>exactly the same length</strong>. So the two clocks are decoupled:</p>
 
       <figure>
         <div class="fig-wrap">
-          <svg viewBox="0 0 760 240" role="img" aria-labelledby="fig3t">
-            <title id="fig3t">Per frame: input forces, gravity forces, boost forces, world step, then draw</title>
+          <svg viewBox="0 0 760 250" role="img" aria-labelledby="fig3t">
+            <title id="fig3t">Per frame: read input, then zero or more fixed physics steps, then draw with interpolation</title>
             <!-- phase bands -->
-            <rect x="10" y="20" width="440" height="30" class="s-paper"/>
-            <text x="20" y="40" class="s-thrust disp" font-size="14">QUEUE FORCES</text>
-            <rect x="460" y="20" width="130" height="30" class="s-paper"/>
-            <text x="470" y="40" class="s-orbit disp" font-size="14">SIMULATE</text>
-            <rect x="600" y="20" width="150" height="30" class="s-paper"/>
-            <text x="610" y="40" class="s-pixel disp" font-size="14">RENDER</text>
+            <rect x="10" y="20" width="130" height="30" class="s-paper"/>
+            <text x="20" y="40" class="s-thrust disp" font-size="14">ONCE PER FRAME</text>
+            <rect x="150" y="20" width="450" height="30" class="s-paper"/>
+            <text x="160" y="40" class="s-orbit disp" font-size="14">EVERY FIXED STEP · 0…n TIMES PER FRAME</text>
+            <rect x="610" y="20" width="140" height="30" class="s-paper"/>
+            <text x="620" y="40" class="s-pixel disp" font-size="14">ONCE PER FRAME</text>
 
-            <!-- boxes -->
-            <g>
-              <rect x="10" y="70" width="136" height="80" rx="4" class="nofill st-thrust" stroke-width="2"/>
-              <text x="22" y="94" class="s-ink" font-size="12" font-weight="600">1 handleInput()</text>
-              <text x="22" y="114" class="s-soft" font-size="11">main thrust</text>
-              <text x="22" y="130" class="s-soft" font-size="11">rotation</text>
-            </g>
-            <g>
-              <rect x="162" y="70" width="136" height="80" rx="4" class="nofill st-thrust" stroke-width="2"/>
-              <text x="174" y="94" class="s-ink" font-size="12" font-weight="600">2 applyGravity()</text>
-              <text x="174" y="114" class="s-soft" font-size="11">pull toward</text>
-              <text x="174" y="130" class="s-soft" font-size="11">both planets</text>
-            </g>
-            <g>
-              <rect x="314" y="70" width="136" height="80" rx="4" class="nofill st-thrust" stroke-width="2"/>
-              <text x="326" y="94" class="s-ink" font-size="12" font-weight="600">3 ship.update()</text>
-              <text x="326" y="114" class="s-soft" font-size="11">solid boost</text>
-              <text x="326" y="130" class="s-soft" font-size="11">while timer &gt; 0</text>
-            </g>
-            <g>
-              <rect x="460" y="70" width="130" height="80" rx="4" class="nofill st-orbit" stroke-width="2.5"/>
-              <text x="472" y="94" class="s-ink" font-size="12" font-weight="600">4 world.step()</text>
-              <text x="472" y="114" class="s-soft" font-size="11">move, collide,</text>
-              <text x="472" y="130" class="s-soft" font-size="11">clear forces</text>
-            </g>
-            <g>
-              <rect x="600" y="70" width="150" height="80" rx="4" class="nofill st-pixel" stroke-width="2"/>
-              <text x="612" y="94" class="s-ink" font-size="12" font-weight="600">5 draw()</text>
-              <text x="612" y="114" class="s-soft" font-size="11">getPosition() ×10</text>
-              <text x="612" y="130" class="s-soft" font-size="11">getAngle()</text>
-            </g>
+            <!-- input -->
+            <rect x="10" y="74" width="130" height="80" rx="4" class="nofill st-thrust" stroke-width="2"/>
+            <text x="22" y="98" class="s-ink" font-size="12" font-weight="600">1 handleInput()</text>
+            <text x="22" y="118" class="s-soft" font-size="11">sets throttle,</text>
+            <text x="22" y="134" class="s-soft" font-size="11">turn, booster</text>
+
+            <!-- step loop -->
+            <rect x="150" y="62" width="450" height="104" rx="6" class="nofill st-orbit" stroke-width="1.5" stroke-dasharray="5 4"/>
+            <rect x="160" y="74" width="140" height="80" rx="4" class="nofill st-thrust" stroke-width="2"/>
+            <text x="172" y="98" class="s-ink" font-size="12" font-weight="600">2 beforeStep()</text>
+            <text x="172" y="118" class="s-soft" font-size="11">save transforms,</text>
+            <text x="172" y="134" class="s-soft" font-size="11">apply all forces</text>
+            <rect x="316" y="74" width="120" height="80" rx="4" class="nofill st-orbit" stroke-width="2.5"/>
+            <text x="328" y="98" class="s-ink" font-size="12" font-weight="600">3 world.step()</text>
+            <text x="328" y="118" class="s-soft" font-size="11">move, collide,</text>
+            <text x="328" y="134" class="s-soft" font-size="11">clear forces</text>
+            <rect x="452" y="74" width="138" height="80" rx="4" class="nofill st-good" stroke-width="2"/>
+            <text x="464" y="98" class="s-ink" font-size="12" font-weight="600">4 afterStep()</text>
+            <text x="464" y="118" class="s-soft" font-size="11">landed? crashed?</text>
+            <text x="464" y="134" class="s-soft" font-size="11">world unlocked</text>
+            <text x="300" y="182" class="s-orbit" font-size="11">repeat while accumulator ≥ 1/60 s</text>
+
+            <!-- draw -->
+            <rect x="610" y="74" width="140" height="80" rx="4" class="nofill st-pixel" stroke-width="2"/>
+            <text x="622" y="98" class="s-ink" font-size="12" font-weight="600">5 draw(alpha)</text>
+            <text x="622" y="118" class="s-soft" font-size="11">camera, renderers,</text>
+            <text x="622" y="134" class="s-soft" font-size="11">HUD</text>
+
             <!-- arrows -->
-            <line x1="146" y1="110" x2="160" y2="110" class="st-ink" stroke-width="1.5"/>
-            <line x1="298" y1="110" x2="312" y2="110" class="st-ink" stroke-width="1.5"/>
-            <line x1="450" y1="110" x2="458" y2="110" class="st-ink" stroke-width="1.5"/>
-            <line x1="590" y1="110" x2="598" y2="110" class="st-ink" stroke-width="1.5"/>
+            <line x1="140" y1="114" x2="158" y2="114" class="st-ink" stroke-width="1.5"/>
+            <line x1="300" y1="114" x2="314" y2="114" class="st-ink" stroke-width="1.5"/>
+            <line x1="436" y1="114" x2="450" y2="114" class="st-ink" stroke-width="1.5"/>
+            <line x1="600" y1="114" x2="608" y2="114" class="st-ink" stroke-width="1.5"/>
 
             <!-- force accumulator bar -->
-            <text x="10" y="186" class="s-soft" font-size="11">force accumulator on the ship body</text>
-            <rect x="10" y="194" width="146" height="14" class="s-thrust" opacity="0.35"/>
-            <rect x="10" y="194" width="298" height="14" class="nofill st-thrust" stroke-width="1"/>
-            <rect x="156" y="194" width="152" height="14" class="s-thrust" opacity="0.6"/>
-            <rect x="308" y="194" width="142" height="14" class="s-thrust" opacity="0.85"/>
-            <line x1="525" y1="186" x2="525" y2="216" class="st-orbit" stroke-width="2"/>
-            <text x="470" y="230" class="s-orbit" font-size="11">used, then reset to 0</text>
+            <text x="160" y="212" class="s-soft" font-size="11">force accumulator on each body</text>
+            <rect x="160" y="220" width="140" height="14" class="s-thrust" opacity="0.6"/>
+            <rect x="160" y="220" width="140" height="14" class="nofill st-thrust" stroke-width="1"/>
+            <line x1="376" y1="212" x2="376" y2="242" class="st-orbit" stroke-width="2"/>
+            <text x="386" y="232" class="s-orbit" font-size="11">used, then reset to 0</text>
           </svg>
         </div>
-        <figcaption>Fig. 3. Forces pile up in an accumulator on the body during steps 1–3. <code>step()</code> uses them for this frame, then clears them.</figcaption>
+        <figcaption>Fig. 3. Input sets <em>intent</em> once per frame. Forces are built and consumed inside each fixed step. Drawing blends the last two steps.</figcaption>
       </figure>
 
-      <p>The single most important rule: <strong>forces last exactly one step</strong>. After <code>world.step()</code>, every body's accumulated force is reset to zero. So continuous effects like gravity and engine thrust must be applied again every frame, and they must be applied <em>before</em> <code>step()</code>.</p>
-      <p>Before the fix, gravity was applied <em>after</em> the step. It still sat in the accumulator until the next frame, so it worked, but always one frame late and computed from the previous position. Small, but the kind of lag that makes physics feel slightly off.</p>
+<pre><code><span class="k">public void</span> update(<span class="k">float</span> frameDelta, StepListener listener) {
+    <span class="c">// clamp to avoid the "spiral of death"</span>
+    accumulator += Math.min(frameDelta, MAX_FRAME_TIME);
+
+    <span class="k">while</span> (accumulator &gt;= TIME_STEP) {
+        <span class="c">// forces: cleared every step, so re-apply</span>
+        listener.<span class="hl">beforeStep</span>(TIME_STEP);
+        world.step(TIME_STEP, 8, 3);
+        <span class="c">// rules: the world is unlocked again</span>
+        listener.<span class="hl">afterStep</span>(TIME_STEP);
+        accumulator -= TIME_STEP;
+    }
+    alpha = accumulator / TIME_STEP;
+}</code></pre>
+      <p class="file">physics/PhysicsWorld.java</p>
+
+      <p>The single most important rule: <strong>forces last exactly one step</strong>. After <code>world.step()</code>, every body's accumulated force is reset to zero. Continuous effects like gravity and engine thrust are therefore applied in <code>beforeStep</code>, every step, not once per frame. If a frame runs three steps, the engine pushes three times.</p>
+      <p>That's also why input sets an <em>intent</em> (<code>ship.setThrottle(1f)</code>) and doesn't apply a force directly. The intent persists across however many steps the frame runs.</p>
 
       <h3>What step() actually does</h3>
-<pre><code>world.step(deltaTime, <span class="hl">6</span>, <span class="hl">2</span>);</code></pre>
-      <p class="file">PhysicsWorld.update()</p>
       <ol class="plain">
         <li><strong>Integrate velocities.</strong> For each dynamic body: velocity += (force ÷ mass) × dt.</li>
         <li><strong>Find contacts.</strong> Which fixtures now overlap or touch?</li>
-        <li><strong>Solve velocities.</strong> Adjust velocities so touching bodies stop pushing into each other and friction applies. Repeated <strong>6</strong> times (velocity iterations).</li>
+        <li><strong>Solve velocities.</strong> Adjust velocities so touching bodies stop pushing into each other and friction applies. Repeated <strong>8</strong> times (velocity iterations).</li>
         <li><strong>Integrate positions.</strong> position += velocity × dt.</li>
-        <li><strong>Solve positions.</strong> Nudge apart anything still overlapping. Repeated <strong>2</strong> times (position iterations).</li>
+        <li><strong>Solve positions.</strong> Nudge apart anything still overlapping. Repeated <strong>3</strong> times (position iterations).</li>
         <li><strong>Clear forces</strong> and fire contact callbacks along the way.</li>
       </ol>
-      <p>More iterations give more accurate, less "squishy" contacts at a CPU cost. The Box2D manual suggests 8 and 3. With one ship, 6 and 2 are fine.</p>
+      <p>8 and 3 are the Box2D manual's recommendation. More iterations give stiffer, more accurate contacts at a CPU cost. That will matter once the ship has jointed legs.</p>
 
-      <h3>Fixed vs. variable timestep</h3>
-      <p>Freefall passes <code>Gdx.graphics.getDeltaTime()</code>, which varies frame to frame. Box2D is most stable and repeatable with a <strong>fixed</strong> step, such as exactly 1/60 s every time. The standard technique is an accumulator:</p>
-<pre><code>accumulator += Math.min(deltaTime, 0.25f);   <span class="c">// clamp to avoid a "spiral of death"</span>
-<span class="k">while</span> (accumulator &gt;= STEP) {
-    applyForces();                  <span class="c">// forces are cleared each step, so re-apply</span>
-    world.step(STEP, 8, 3);
-    accumulator -= STEP;
+      <h3>Interpolation: smooth drawing between steps</h3>
+      <p>On a 144 Hz monitor, a 60 Hz simulation advances only every second or third frame. Drawing raw body positions would show the ship standing still, then jumping, which looks like stutter. So <code>InterpolatedBody</code> remembers each body's previous transform, and renderers blend toward the current one by <code>alpha</code>:</p>
+<pre><code><span class="c">// called in beforeStep</span>
+<span class="k">public void</span> savePreviousTransform() {
+    previousPosition.set(body.getPosition());
+    previousAngle = body.getAngle();
+}
+
+<span class="k">public</span> Vector2 getPosition(<span class="k">float</span> alpha) {
+    <span class="k">return</span> interpolatedPosition.set(previousPosition)
+        .<span class="hl">lerp</span>(body.getPosition(), alpha);
 }</code></pre>
-      <p>Not required now. Keep it in mind if landings feel inconsistent between a fast and a slow machine.</p>
+      <p class="file">physics/InterpolatedBody.java</p>
+      <p>The cost is that you draw up to one step (about 17 ms) in the past. The camera follows the same interpolated position, so the ship doesn't jitter against it.</p>
 
       <div class="check">
         <h3>Check yourself</h3>
-        <details><summary>You call applyForceToCenter once when the player taps a key. What happens?</summary><div><p>The ship gets a push for a single step (about 1/60 s) and then the force is gone. For a one-time kick you want an <strong>impulse</strong> instead (section 5).</p></div></details>
-        <details><summary>Why is drawing done after step() and not before?</summary><div><p>So you draw where things are <em>now</em>. Drawing before the step would always show the previous frame's positions.</p></div></details>
+        <details><summary>You call applyForceToCenter once when the player taps a key. What happens?</summary><div><p>The ship gets a push for a single 1/60 s step and then the force is gone. For a one-time kick you want an <strong>impulse</strong> instead (section 5).</p></div></details>
+        <details><summary>The game hitches for half a second. How many steps run on the next frame?</summary><div><p>15. The frame time is clamped to <code>MAX_FRAME_TIME</code> = 0.25 s, which is 15 steps of 1/60 s. The simulation briefly runs slower than real time instead of trying to catch up forever.</p></div></details>
+        <details><summary>Why are landing rules in afterStep and not inside the contact listener?</summary><div><p>Callbacks run while the world is locked, and several contacts can begin in one step. Recording facts during the step and deciding afterwards is safe and sees the whole step. See section 8.</p></div></details>
       </div>
     </section>
 
     <!-- 05 -->
     <section id="moving">
       <div class="sec-num">05</div>
-      <h2>Four ways to move a body</h2>
-      <p>Box2D gives you several levers, from "physically honest" to "teleport." Freefall uses three of them.</p>
+      <h2>Ways to move a body</h2>
+      <p>Box2D gives you several levers, from "physically honest" to "teleport." Freefall's game code only uses the honest ones.</p>
 
       <div class="table-wrap">
         <table>
           <thead><tr><th>Method</th><th>Effect</th><th>Real-world feel</th><th>Freefall uses it for</th></tr></thead>
           <tbody>
-            <tr><td><code>applyForceToCenter</code></td><td>Continuous push spread over one step. Acceleration = F ÷ m.</td><td>An engine burning</td><td>Main thrust, solid boost, gravity</td></tr>
+            <tr><td><code>applyForceToCenter</code></td><td>Continuous push spread over one step. Acceleration = F ÷ m.</td><td>An engine burning</td><td>Main engine, booster, gravity</td></tr>
+            <tr><td><code>applyTorque</code></td><td>Continuous twist. Angular acceleration = τ ÷ I.</td><td>Attitude thrusters</td><td>Turning and holding attitude</td></tr>
             <tr><td><code>applyLinearImpulse</code></td><td>Instant change in momentum. Velocity changes by impulse ÷ m.</td><td>A kick, an explosion</td><td>Not yet</td></tr>
-            <tr><td><code>setLinearVelocity</code></td><td>Overwrites velocity. Ignores mass.</td><td>Cheating physics</td><td><code>Ship.land()</code> stops the ship</td></tr>
-            <tr><td><code>setTransform</code></td><td>Teleports to a position and angle.</td><td>Cheating harder</td><td><code>Ship.setAngle()</code> rotation</td></tr>
+            <tr><td><code>setLinearVelocity</code></td><td>Overwrites velocity. Ignores mass and contacts.</td><td>Cheating physics</td><td>Only tests, to set up a scenario</td></tr>
+            <tr><td><code>setTransform</code></td><td>Teleports to a position and angle.</td><td>Cheating harder</td><td>Never</td></tr>
           </tbody>
         </table>
       </div>
 
-      <h3>Force = mass × acceleration</h3>
-      <p>Your constants describe accelerations ("the engine accelerates the ship at 25 m/s²"). Box2D wants a force, so the code multiplies by mass:</p>
-<pre><code><span class="k">float</span> angle = body.getAngle();
-<span class="k">float</span> mass  = body.<span class="hl">getMass()</span>;
-Vector2 force = <span class="k">new</span> Vector2(
-    cos(angle) * thrustAmount * mass,
-    sin(angle) * thrustAmount * mass);
-body.applyForceToCenter(force, <span class="k">true</span>);</code></pre>
-      <p class="file">Ship.applyThrust()</p>
-      <p>Where does mass come from? Box2D calculates it from the fixture: <strong>density × shape area</strong>.</p>
-      <div class="calc">
-        <div><span class="lbl">Ship area</span><span class="val">1.131 <small>m²</small></span><span class="note">π × 0.6²</span></div>
-        <div><span class="lbl">Ship mass</span><span class="val">1.131 <small>kg</small></span><span class="note">density 1.0 × area</span></div>
-        <div><span class="lbl">Thrust force</span><span class="val">28.3 <small>N</small></span><span class="note">1.131 × 25 m/s²</span></div>
-      </div>
-      <p>Because you multiply by mass, you could change density to 5 and the ship would fly exactly the same. Mass would matter later, when the ship bumps into other dynamic bodies.</p>
+      <h3>Forces vs. accelerations</h3>
+      <p>An engine produces a <strong>force</strong>, so the ship's thrust constants are in newtons. Box2D divides by mass, so a heavier ship accelerates less, as it should:</p>
+<pre><code><span class="k">public static final float</span> MAIN_ENGINE_THRUST = <span class="hl">25_000f</span>;   <span class="c">// newtons</span>
 
-      <h3>Why rotation uses setTransform</h3>
-      <p>Freefall wants arcade rotation: press a key, the nose turns immediately at a fixed rate. Real rotation would need torque and angular inertia. So <code>setAngle()</code> teleports the angle directly, and <code>fixedRotation = true</code> tells Box2D never to rotate the ship itself. Without that, friction from grazing the terrain would set the ship spinning and throw off its thrust direction.</p>
+force.set(body.<span class="hl">getWorldVector(NOSE_DIRECTION)</span>).scl(newtons);
+body.applyForceToCenter(force, <span class="k">true</span>);</code></pre>
+      <p class="file">world/Ship.applyThrust()</p>
+      <p><code>getWorldVector</code> rotates a local direction (the nose, +Y) by the body's current angle, so no sines or cosines are needed.</p>
+      <p>Mass comes from the fixture: <strong>density × shape area</strong>. The ship picks the density that gives the mass it wants:</p>
+      <div class="calc">
+        <div><span class="lbl">Hull area</span><span class="val">1.131 <small>m²</small></span><span class="note">π × 0.6²</span></div>
+        <div><span class="lbl">Density</span><span class="val">884 <small>kg/m²</small></span><span class="note">HULL_MASS ÷ area</span></div>
+        <div><span class="lbl">Acceleration</span><span class="val">25 <small>m/s²</small></span><span class="note">25 000 N ÷ 1000 kg</span></div>
+      </div>
+      <p>Gravity is the opposite case. It's an <strong>acceleration</strong>, the same for every mass, so <code>PlanetaryGravity</code> multiplies by mass before calling <code>applyForceToCenter</code> (section 6).</p>
+
+      <h3>Attitude control with torque</h3>
+      <p>Freefall wants arcade-feeling rotation: hold a key and the ship turns at a steady rate, let go and it stops. Rather than teleport the angle, the ship computes the torque that brings its spin toward the requested rate and caps it:</p>
+<pre><code><span class="k">float</span> targetRate = turnInput * MAX_TURN_RATE;
+<span class="k">float</span> neededAcceleration = (targetRate - body.getAngularVelocity()) / dt;
+<span class="k">float</span> angularAcceleration = MathUtils.clamp(neededAcceleration,
+    -MAX_TURN_ACCELERATION, MAX_TURN_ACCELERATION);
+
+<span class="c">// Torque = I × α, the rotational twin of F = m × a.</span>
+body.<span class="hl">applyTorque</span>(body.getInertia() * angularAcceleration, turnInput != 0f);</code></pre>
+      <p class="file">world/Ship.applyAttitudeControl()</p>
+      <p>With no input, the target rate is zero, so the controller holds attitude. It also cancels any spin from scraping the terrain. The old approach used <code>setTransform</code> plus <code>fixedRotation = true</code>. That skips collision response, and it would tear jointed parts (landing legs) away from the hull, because joints can't follow a teleport.</p>
 
       <div class="check">
         <h3>Check yourself</h3>
-        <details><summary>You want the solid boost to be one instant kick instead of a 2-second burn. Which method?</summary><div><p><code>applyLinearImpulse(impulse, body.getWorldCenter(), true)</code>, called once. The impulse is mass × desired change in velocity.</p></div></details>
-        <details><summary>What's the danger of moving the ship with setTransform every frame?</summary><div><p>Teleporting skips collision resolution. You can place the ship inside terrain and Box2D has to shove it out violently, or it ends up stuck inside a chain shape.</p></div></details>
+        <details><summary>You want the solid booster to be one instant kick instead of a 2-second burn. Which method?</summary><div><p><code>applyLinearImpulse(impulse, body.getWorldCenter(), true)</code>, called once. The impulse is mass × desired change in velocity.</p></div></details>
+        <details><summary>Landing legs add 200 kg. Does the ship fall faster? Does it thrust slower?</summary><div><p>It falls at the same rate, because gravity is an acceleration, scaled by each body's own mass. It thrusts slower, because 25 000 N now moves 1200 kg: about 20.8 m/s².</p></div></details>
       </div>
     </section>
 
@@ -744,10 +776,18 @@ body.applyForceToCenter(force, <span class="k">true</span>);</code></pre>
       <div class="sec-num">06</div>
       <h2>Planet gravity</h2>
       <p>Box2D's built-in gravity is a single vector applied to every dynamic body: "down" in one fixed direction. That suits a platformer. A ship between two planets needs gravity that points toward each planet's center and weakens with distance.</p>
-      <p>So Freefall turns world gravity off:</p>
-<pre><code>world = <span class="k">new</span> World(<span class="k">new</span> Vector2(<span class="hl">0, 0</span>), <span class="k">false</span>);</code></pre>
-      <p class="file">PhysicsWorld constructor</p>
-      <p>…and applies its own inverse-square pull as a force every frame, in <code>Ship.applyGravityFromPlanet()</code>. Originally the world had gravity <code>(0, −9.8)</code> <em>as well</em>, so every frame the ship also fell toward the bottom of the screen. That was the main reason thrust seemed to point the wrong way.</p>
+      <p>So Freefall turns world gravity off…</p>
+<pre><code>world = <span class="k">new</span> World(<span class="k">new</span> Vector2(<span class="hl">0f, 0f</span>), <span class="k">true</span>);</code></pre>
+      <p class="file">physics/PhysicsWorld constructor</p>
+      <p>…and applies its own inverse-square pull to <strong>every dynamic body</strong> before each step:</p>
+<pre><code>world.getBodies(bodies);
+<span class="k">for</span> (Body body : bodies) {
+    <span class="k">if</span> (body.getType() != BodyDef.BodyType.DynamicBody) <span class="k">continue</span>;
+    accelerationAt(body.getWorldCenter(), acceleration).scl(body.<span class="hl">getMass()</span>);   <span class="c">// F = m × a</span>
+    body.applyForceToCenter(acceleration, <span class="hl">false</span>);
+}</code></pre>
+      <p class="file">world/PlanetaryGravity.applyTo()</p>
+      <p>Looping over the world's bodies instead of "the ship" means landing legs, debris or a second ship get gravity with no extra code. The <code>false</code> means "don't wake a sleeping body" (section 9).</p>
 
       <figure>
         <div class="fig-wrap">
@@ -760,11 +800,11 @@ body.applyForceToCenter(force, <span class="k">true</span>);</code></pre>
             <circle cx="90" cy="125" r="70" class="s-orbit" opacity="0.18"/>
             <circle cx="90" cy="125" r="70" class="nofill st-orbit" stroke-width="1.5"/>
             <circle cx="90" cy="125" r="3" class="s-orbit"/>
-            <text x="54" y="222" class="s-ink" font-size="11">planet1 (−240 m)</text>
+            <text x="54" y="222" class="s-ink" font-size="11">planet 1 (−240 m)</text>
             <circle cx="670" cy="125" r="70" class="s-orbit" opacity="0.18"/>
             <circle cx="670" cy="125" r="70" class="nofill st-orbit" stroke-width="1.5"/>
             <circle cx="670" cy="125" r="3" class="s-orbit"/>
-            <text x="630" y="222" class="s-ink" font-size="11">planet2 (+240 m)</text>
+            <text x="630" y="222" class="s-ink" font-size="11">planet 2 (+240 m)</text>
 
             <!-- ship -->
             <circle cx="300" cy="125" r="9" class="nofill st-ink" stroke-width="1.5"/>
@@ -776,21 +816,28 @@ body.applyForceToCenter(force, <span class="k">true</span>);</code></pre>
             <text x="330" y="146" class="s-orbit" font-size="11">weak pull</text>
             <!-- thrust -->
             <line x1="306" y1="117" x2="360" y2="52" class="st-thrust" stroke-width="2.5" marker-end="url(#ah-t)"/>
-            <text x="368" y="52" class="s-thrust" font-size="11">thrust along body angle</text>
-            <text x="228" y="170" class="s-soft" font-size="11">G · M / d²  toward each center</text>
+            <text x="368" y="52" class="s-thrust" font-size="11">thrust along the nose (local +Y)</text>
+            <text x="228" y="170" class="s-soft" font-size="11">a = GM / d²  toward each center</text>
           </svg>
         </div>
-        <figcaption>Fig. 4. Two gravity forces plus thrust, summed in the accumulator. Arrow lengths are illustrative.</figcaption>
+        <figcaption>Fig. 4. Two gravity forces plus thrust, summed in the ship's force accumulator. Arrow lengths are illustrative.</figcaption>
       </figure>
 
-      <h3>Worked numbers</h3>
-      <p>With <code>GRAVITATIONAL_CONSTANT = 85000</code>, planet mass 1, and distances in meters:</p>
+      <h3>Tuning by surface gravity</h3>
+      <p>Newton's law needs a "GM" for each planet, which is hard to guess. Instead, each planet declares the gravity you feel standing on a landing zone, and GM is derived from that:</p>
+<pre><code><span class="k">public static final float</span> SURFACE_GRAVITY = <span class="hl">18f</span>;   <span class="c">// m/s² at landing-zone height</span>
+
+<span class="k">public float</span> getGravitationalParameter() {
+    <span class="k">return</span> SURFACE_GRAVITY * LANDING_ZONE_RADIUS * LANDING_ZONE_RADIUS;
+}</code></pre>
+      <p class="file">world/Planet.java</p>
       <div class="calc">
-        <div><span class="lbl">At a landing zone</span><span class="val">17.9 <small>m/s²</small></span><span class="note">d = 69 m (1.15 × 600 px ÷ 10)</span></div>
+        <div><span class="lbl">At a landing zone</span><span class="val">18.0 <small>m/s²</small></span><span class="note">d = 69 m, by definition</span></div>
         <div><span class="lbl">Halfway out</span><span class="val">3.8 <small>m/s²</small></span><span class="note">d = 150 m</span></div>
-        <div><span class="lbl">Main thrust</span><span class="val">25.0 <small>m/s²</small></span><span class="note">beats surface gravity by about 7</span></div>
+        <div><span class="lbl">Main engine</span><span class="val">25.0 <small>m/s²</small></span><span class="note">thrust-to-weight ≈ 1.4 on the pad</span></div>
       </div>
-      <p>That last comparison is a gameplay dial. The thrust-to-weight ratio at the surface is about 1.4, so takeoff is possible but sluggish. Raising thrust or lowering G changes how the game feels.</p>
+      <p>That last comparison is a gameplay dial. Takeoff is possible but sluggish. Raising thrust or lowering surface gravity changes how the game feels.</p>
+      <p><code>accelerationAt(point, out)</code> is a pure function with no Box2D state. A future trajectory predictor can call it at points the ship hasn't reached yet and get exactly the same physics.</p>
 
       <div class="aside angular">
         <span class="tag">Angular comparison</span>
@@ -804,23 +851,24 @@ body.applyForceToCenter(force, <span class="k">true</span>);</code></pre>
       <h2>Shapes &amp; fixtures</h2>
 
       <h3>The ship: CircleShape</h3>
-      <p>Circles are the cheapest, most stable shape in Box2D. The triangle you see on screen is only a drawing. To the physics engine the ship is a 0.6 m ball. That's why the landing check has to compare angles itself: a ball has no "feet."</p>
+      <p>Circles are the cheapest, most stable shape in Box2D. The triangle you see on screen is only a drawing. To the physics engine the ship is a 0.6 m ball, which is why the landing check has to compare angles itself: a ball has no "feet." Landing legs will change that (section 13).</p>
 
       <h3>Fixture properties</h3>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Property</th><th>Ship value</th><th>Meaning</th></tr></thead>
           <tbody>
-            <tr><td><code>density</code></td><td class="num">1.0</td><td>kg per m². Used to compute mass.</td></tr>
-            <tr><td><code>friction</code></td><td class="num">0.3</td><td>Resistance to sliding along a surface. 0 is ice.</td></tr>
+            <tr><td><code>density</code></td><td class="num">884</td><td>kg per m². Chosen so the hull weighs 1000 kg.</td></tr>
+            <tr><td><code>friction</code></td><td class="num">0.3</td><td>Resistance to sliding along a surface. 0 is ice. Two fixtures mix as √(a × b).</td></tr>
             <tr><td><code>restitution</code></td><td class="num">0.1</td><td>Bounciness. 0 stops dead, 1 bounces back at full speed.</td></tr>
             <tr><td><code>isSensor</code></td><td class="num">false</td><td>A sensor reports contacts but never blocks. Useful for zones.</td></tr>
+            <tr><td><code>filter</code></td><td class="num">SHIP</td><td>Collision category and mask. See below.</td></tr>
           </tbody>
         </table>
       </div>
 
       <h3>The terrain: ChainShape loop</h3>
-      <p>A chain is a connected series of line segments. Freefall samples the terrain every 50 mils, giving 128 vertices, and closes the ring with <code>createLoop()</code>.</p>
+      <p><code>Terrain</code> stores 128 vertex radii, evenly spaced by angle and generated from a seed, so a given seed always gives the same planet. Landing zones are angular ranges whose vertices are flattened to one radius. <code>Planet</code> hands the same vertices to a <code>ChainShape</code> loop, and <code>PlanetRenderer</code> draws them. What you see is exactly what you collide with.</p>
 
       <figure>
         <div class="fig-wrap">
@@ -847,11 +895,11 @@ body.applyForceToCenter(force, <span class="k">true</span>);</code></pre>
               <circle cx="424" cy="38" r="3"/><circle cx="460" cy="46" r="3"/><circle cx="490" cy="66" r="3"/><circle cx="512" cy="94" r="3"/>
             </g>
             <line x1="420" y1="130" x2="488" y2="200" class="st-thrust" stroke-width="1.5"/>
-            <text x="560" y="96" class="s-thrust" font-size="12">vertex = (d·cos θ, d·sin θ) / 10</text>
+            <text x="560" y="96" class="s-thrust" font-size="12">vertex = (r·cos θ, r·sin θ)</text>
             <text x="560" y="116" class="s-soft" font-size="11">relative to the body,</text>
             <text x="560" y="132" class="s-soft" font-size="11">no planet x/y added</text>
-            <text x="560" y="170" class="s-soft" font-size="11">d = terrainPoints[i]</text>
-            <text x="560" y="186" class="s-soft" font-size="11">(already in pixels)</text>
+            <text x="560" y="170" class="s-soft" font-size="11">r = terrain.getRadius(i)</text>
+            <text x="560" y="186" class="s-soft" font-size="11">(meters)</text>
           </svg>
         </div>
         <figcaption>Fig. 5. Shape coordinates are local to their body. The body carries the planet's world position; adding it to each vertex as well would place the terrain twice as far away.</figcaption>
@@ -863,9 +911,18 @@ body.applyForceToCenter(force, <span class="k">true</span>);</code></pre>
         <li>Chains connect their segments smoothly, so a sliding object doesn't catch on the seams between segments (a known problem called <em>ghost collisions</em>).</li>
         <li>A chain is <strong>hollow</strong>: only the line itself collides. An object that ends up inside the ring stays inside. That's fine here, since the ship always approaches from outside.</li>
       </ul>
+      <p>A landing zone's flat segments are straight chords. Their midpoint sits slightly inside the circle through their end vertices, and a ball on a vertex would roll off the small ridge there. So the spawn point is the middle of the zone's central segment (<code>Planet.getLandingSite()</code>).</p>
 
-      <h3>bullet = true</h3>
-      <p>Normally Box2D checks for collisions at each step's final positions. A small, fast object can be outside the terrain one step and past it the next, never registering a hit. This is called <em>tunneling</em>. Marking the ship as a bullet turns on continuous collision detection, which sweeps the ship's path between steps. It costs a little more and is worth it for the one object that matters most.</p>
+      <h3>Tagging fixtures and filtering collisions</h3>
+      <p>Each fixture's user data is a <code>FixtureRole</code> (<code>SHIP_HULL</code>, <code>TERRAIN</code>). A body's user data says <em>who</em> touched. A fixture's role says <em>which part</em>. Once the ship has legs, a foot touching the ground is a landing and the hull touching it is a crash.</p>
+<pre><code>fixtureDef.filter.categoryBits = CollisionCategory.SHIP;      <span class="c">// what I am</span>
+fixtureDef.filter.maskBits = CollisionCategory.TERRAIN;       <span class="c">// what I collide with</span>
+body.createFixture(fixtureDef).setUserData(FixtureRole.SHIP_HULL);</code></pre>
+      <p class="file">world/Ship.java · constructor</p>
+      <p>Two fixtures collide only if each one's category is in the other's mask. Box2D checks this before creating a contact, so filtered pairs cost nothing.</p>
+
+      <h3>Why the ship isn't a bullet</h3>
+      <p>A small, fast object can be outside a wall one step and past it the next, never registering a hit. This is called <em>tunneling</em>. Box2D already prevents it for <strong>dynamic vs. static</strong> pairs by sweeping each dynamic body's path between steps (continuous collision detection). So the ship can't tunnel through terrain without any flag. <code>bullet = true</code> only extends that sweep to dynamic vs. dynamic pairs, which is useful for fast debris hitting the ship.</p>
 
       <h3>Disposing shapes</h3>
       <p>Shapes are native memory that Java's garbage collector can't see. <code>createFixture</code> copies the shape, so you dispose your copy right after:</p>
@@ -877,9 +934,9 @@ shape.<span class="hl">dispose()</span>;</code></pre>
     <section id="contacts">
       <div class="sec-num">08</div>
       <h2>Collisions: the contact listener</h2>
-      <p>Box2D resolves collisions for you. The ship won't pass through a planet whether you listen or not. A <code>ContactListener</code> is how you <em>react</em> to them: decide whether a touchdown was a landing or a crash.</p>
-<pre><code>physicsWorld.getWorld().setContactListener(contactListener);</code></pre>
-      <p class="file">Main.create()</p>
+      <p>Box2D resolves collisions for you. The ship won't pass through a planet whether you listen or not. A <code>ContactListener</code> is how you <em>react</em> to them: was that touchdown a landing or a crash?</p>
+<pre><code>world.setContactListener(<span class="k">new</span> ShipContactListener());</code></pre>
+      <p class="file">world/GameWorld constructor</p>
 
       <figure>
         <div class="fig-wrap">
@@ -903,43 +960,49 @@ shape.<span class="hl">dispose()</span>;</code></pre>
             <text x="590" y="56" class="s-soft" font-size="11">once, on separation</text>
           </svg>
         </div>
-        <figcaption>Fig. 6. When each callback fires. Freefall does its landing check in beginContact.</figcaption>
+        <figcaption>Fig. 6. When each callback fires. Freefall records touchdowns in beginContact and lift-offs in endContact.</figcaption>
       </figure>
 
       <div class="table-wrap">
         <table>
           <thead><tr><th>Callback</th><th>When</th><th>Typical use</th></tr></thead>
           <tbody>
-            <tr><td><code>beginContact</code></td><td>First step two fixtures touch</td><td>Touchdown: land or crash (Freefall)</td></tr>
-            <tr><td><code>endContact</code></td><td>First step they separate</td><td>"Lifted off"</td></tr>
+            <tr><td><code>beginContact</code></td><td>First step two fixtures touch</td><td>Record a touchdown and its impact speed (Freefall)</td></tr>
+            <tr><td><code>endContact</code></td><td>First step they separate</td><td>Count contacts, to detect lift-off (Freefall)</td></tr>
             <tr><td><code>preSolve</code></td><td>Each step, before the collision is resolved</td><td>Cancel a contact, e.g. one-way platforms</td></tr>
             <tr><td><code>postSolve</code></td><td>Each step, after, with the impulse used</td><td>Damage based on how hard the hit was</td></tr>
           </tbody>
         </table>
       </div>
 
-      <h3>Who hit whom? userData</h3>
-      <p>Box2D knows nothing about ships or planets. A contact just gives you two fixtures, A and B, in no particular order. Freefall tags its body with the Java object that owns it:</p>
-<pre><code>body.setUserData(<span class="k">this</span>);                       <span class="c">// in Ship</span>
-<span class="c">// later, in the listener:</span>
-<span class="k">boolean</span> isShip = body.getUserData() <span class="k">instanceof</span> Ship;</code></pre>
-      <p>This is the standard pattern. Tag planets the same way when you need to know which planet you touched.</p>
+      <h3>Record during the step, decide after it</h3>
+      <p>Callbacks run <em>inside</em> <code>world.step()</code>, while the world is locked. So <code>ShipContactListener</code> only reports facts:</p>
+<pre><code><span class="c">// findIn checks both fixture A and fixture B</span>
+Fixture hull = FixtureRole.SHIP_HULL.<span class="hl">findIn</span>(contact);
+Fixture terrain = FixtureRole.TERRAIN.findIn(contact);
+<span class="k">if</span> (hull == <span class="k">null</span> || terrain == <span class="k">null</span>) <span class="k">return</span>;
 
-      <h3>The landing check, step by step</h3>
+Ship ship = (Ship) hull.getBody().getUserData();
+Planet planet = (Planet) terrain.getBody().getUserData();
+<span class="k">float</span> speed = impactSpeed(contact, hull.getBody(), terrain.getBody());
+ship.<span class="hl">onGroundContactBegin</span>(planet, speed);</code></pre>
+      <p class="file">world/ShipContactListener.beginContact()</p>
+      <p>Then <code>Ship.afterStep()</code>, called by <code>GameWorld</code> once the step is over, judges the touchdown. By then every contact from the step is known, and if several began, the hardest hit wins.</p>
       <ol class="plain">
-        <li><strong>Impact speed.</strong> <code>getWorldManifold().getPoints()[0]</code> gives the contact point. <code>getLinearVelocityFromWorldPoint</code> gives each body's velocity at that point. Their difference is the closing speed, converted to px/s.</li>
-        <li><strong>Too fast?</strong> Above 50 px/s it's a crash.</li>
-        <li><strong>Upright?</strong> "Up" is the direction from the planet center out to the ship. The difference between that and the ship's angle is wrapped into ±π, so 359° against 1° counts as 2°. Within 15° is a landing.</li>
+        <li><strong>Impact speed.</strong> <code>getWorldManifold().getPoints()[0]</code> is the contact point. <code>getLinearVelocityFromWorldPoint</code> gives each body's velocity there. Their difference is the closing speed in m/s.</li>
+        <li><strong>Too fast?</strong> Above <code>MAX_LANDING_SPEED</code> (10 m/s) it's a crash.</li>
+        <li><strong>Upright?</strong> "Up" points from the planet's center out to the ship. The tilt is the angle between that and the nose, <code>atan2(up × nose, up · nose)</code>, which is always 0…π, with no wrapping needed. Within 15° is a landing.</li>
+        <li><strong>Lift-off.</strong> When <code>endContact</code> has brought the ground-contact count back to zero, a landed ship is flying again.</li>
       </ol>
 
       <div class="aside warn">
         <span class="tag">The locked world</span>
-        <p>Callbacks run <em>inside</em> <code>world.step()</code>, while Box2D is mid-calculation and the world is locked. Creating or destroying bodies or fixtures there crashes in native code. Small tweaks like setting velocity are tolerated. For anything structural, such as removing the ship or spawning debris, set a flag in the callback and act on it after <code>step()</code> returns.</p>
+        <p>Creating or destroying bodies or fixtures inside a callback crashes in native code. Setting velocities is technically allowed but fights the solver mid-step. For anything structural, such as removing the ship or spawning debris, set a flag and act on it after <code>step()</code> returns. <code>GameWorld.requestRestart()</code> does exactly that: the restart happens in <code>update()</code>, after the step loop.</p>
       </div>
 
       <div class="check">
         <h3>Check yourself</h3>
-        <details><summary>Why does the listener check both fixture A and fixture B for the ship?</summary><div><p>Box2D doesn't guarantee order. The ship could be A in one contact and B in the next.</p></div></details>
+        <details><summary>Why does the listener check both fixture A and fixture B for the ship?</summary><div><p>Box2D doesn't guarantee order. The ship could be A in one contact and B in the next. <code>FixtureRole.findIn()</code> hides that.</p></div></details>
         <details><summary>You want sparks proportional to how hard the ship hits. Which callback?</summary><div><p><code>postSolve</code>. Its <code>ContactImpulse</code> tells you how much impulse Box2D applied to separate the bodies, which is a direct measure of impact strength.</p></div></details>
       </div>
     </section>
@@ -948,24 +1011,25 @@ shape.<span class="hl">dispose()</span>;</code></pre>
     <section id="sleep">
       <div class="sec-num">09</div>
       <h2>Sleeping</h2>
-      <p>A body that has barely moved for about half a second is put to sleep. Box2D stops simulating it until something wakes it. This saves a lot of CPU in scenes with many resting objects.</p>
+      <p>A body that has barely moved for about half a second is put to sleep. Box2D stops simulating it until something wakes it. This saves a lot of CPU in scenes with many resting objects. It's on by default and Freefall keeps it on: <code>new World(gravity, <strong>true</strong>)</code>, where the second argument is <code>doSleep</code>.</p>
+      <p>The last argument of <code>applyForceToCenter</code> and <code>applyTorque</code> is <code>wake</code>. Freefall uses it deliberately:</p>
       <ul>
-        <li><code>Ship.land()</code> calls <code>setAwake(false)</code> to park the ship deliberately.</li>
-        <li>The second argument in <code>applyForceToCenter(force, <strong>true</strong>)</code> means "wake the body if it's sleeping." With <code>false</code>, thrusting a parked ship would do nothing.</li>
-        <li>A collision with an awake body also wakes a sleeper.</li>
+        <li><strong>Gravity: <code>false</code>.</strong> A ship resting on a pad is in balance. Gravity shouldn't keep it awake, so it falls asleep naturally about half a second after landing.</li>
+        <li><strong>Engines: <code>true</code>.</strong> Thrusting must wake a parked ship, or it could never take off.</li>
+        <li><strong>Attitude control: only while steering.</strong> Holding attitude on a sleeping ship would otherwise keep it awake forever.</li>
       </ul>
-      <p>The second argument to the <code>World</code> constructor, <code>new World(gravity, false)</code>, is <code>doSleep</code>. Freefall passes <code>false</code>, which disables automatic sleeping. Explicit <code>setAwake(false)</code> still works.</p>
+      <p>A collision with an awake body also wakes a sleeper. In the debug view (section 10), sleeping bodies are drawn in a dimmer color. Land and watch the ship change color.</p>
     </section>
 
     <!-- 10 -->
     <section id="debug">
       <div class="sec-num">10</div>
       <h2>Debug renderer</h2>
-      <p>Press <code>'</code> in the game. <code>Box2DDebugRenderer</code> draws what Box2D actually believes exists: circle outlines, chain segments, contact points. Your own drawing code can lie; this can't.</p>
-      <p>When physics feels wrong, turn this on first. The oversized terrain ring would have been obvious here.</p>
-<pre><code>debugRenderer.render(world, camera.combined.cpy().<span class="hl">scl(PIXELS_PER_METER)</span>);</code></pre>
-      <p class="file">PhysicsWorld.renderDebug()</p>
-      <p>The camera works in pixels and Box2D in meters, so the camera's matrix is scaled by 10 before the debug renderer uses it. <code>cpy()</code> keeps the real camera matrix untouched.</p>
+      <p>Press <code>'</code> in the game. <code>Box2DDebugRenderer</code> draws what Box2D actually believes exists: circle outlines, chain segments, contact points, and whether each body is awake. Your own drawing code can be wrong; this can't.</p>
+      <p>When physics feels wrong, turn this on first. The oversized terrain ring from the pixels era would have been obvious here.</p>
+<pre><code>box2DRenderer.render(world.getBox2DWorld(), worldViewport.getCamera().<span class="hl">combined</span>);</code></pre>
+      <p class="file">render/DebugOverlay.render()</p>
+      <p>Box2D and the camera share a unit, so the camera matrix goes in unchanged. The debug renderer draws raw body positions, not interpolated ones, so its outlines can trail the art by up to one step while moving.</p>
     </section>
 
     <!-- 11 -->
@@ -974,44 +1038,72 @@ shape.<span class="hl">dispose()</span>;</code></pre>
       <h2>Gotchas</h2>
 
       <h3>Returned vectors are reused</h3>
-      <p><code>body.getPosition()</code>, <code>getLinearVelocity()</code> and <code>getLinearVelocityFromWorldPoint()</code> return the <em>same</em> <code>Vector2</code> object every time they're called on that body. LibGDX does this to avoid creating garbage every frame. Mutating it with <code>.sub()</code> or <code>.add()</code> corrupts the next caller's value. Copy first:</p>
-<pre><code>Vector2 up = shipPos.<span class="hl">cpy()</span>.sub(planetPos);</code></pre>
+      <p><code>body.getPosition()</code>, <code>getWorldCenter()</code>, <code>getLinearVelocity()</code>, <code>getWorldVector()</code> and <code>getLinearVelocityFromWorldPoint()</code> return the <em>same</em> <code>Vector2</code> object every time they're called on that body. LibGDX does this to avoid creating garbage every frame. Mutating it with <code>.sub()</code> or <code>.add()</code> corrupts the next caller's value. Copy into a vector you own first:</p>
+<pre><code>localUp.<span class="hl">set</span>(body.getWorldCenter()).sub(planet.getCenter()).nor();</code></pre>
+      <p>Freefall keeps such scratch vectors as <code>final</code> fields, so the per-step code allocates nothing. <code>cpy()</code> works too, but it creates a new object every call.</p>
       <div class="aside angular">
         <span class="tag">Angular comparison</span>
         <p>It's like a service that returns a reference to its internal state object instead of a copy. Mutating it from a component silently changes the state for everyone else. Treat it as read-only, the same way you would treat state selected from a store.</p>
       </div>
 
       <h3>The hidden speed limit</h3>
-      <p>Box2D caps movement at <strong>2 meters per step</strong>, however large the velocity. At 60 steps per second that's 120 m/s, or 1200 px/s at your scale. Past that, the ship silently stops getting faster.</p>
+      <p>Box2D caps movement at <strong>2 meters per step</strong>, however large the velocity. At 60 steps per second that's 120 m/s. Past that, a body silently stops getting faster.</p>
       <div class="calc">
         <div><span class="lbl">Cap</span><span class="val">120 <small>m/s</small></span><span class="note">2 m × 60 steps</span></div>
-        <div><span class="lbl">Old boost Δv</span><span class="val" style="color:var(--thrust)">300 <small>m/s</small></span><span class="note">150 m/s² × 2 s: over the cap</span></div>
-        <div><span class="lbl">Fixed boost Δv</span><span class="val" style="color:var(--good)">30 <small>m/s</small></span><span class="note">15 m/s² × 2 s: well under</span></div>
+        <div><span class="lbl">Booster Δv</span><span class="val" style="color:var(--good)">30 <small>m/s</small></span><span class="note">15 000 N ÷ 1000 kg × 2 s</span></div>
+        <div><span class="lbl">Main engine</span><span class="val" style="color:var(--thrust)">can reach it</span><span class="note">25 m/s² for 5 s is 125 m/s</span></div>
       </div>
-      <p>This came straight from the units issue in section 3. With the constant at 150, the solid boost would have run into the cap. Converting it to meters (15 m/s², the same feel as the original pixel-based game) fixed it.</p>
+      <p>Long burns in open space can hit the cap. If interplanetary speeds need to go higher, shrink the world (in meters) rather than raising velocities.</p>
+
+      <h3>Box2D angles don't wrap</h3>
+      <p><code>body.getAngle()</code> is continuous. Two full turns read 4π, not 0. That's why <code>InterpolatedBody</code> can lerp angles directly. Any comparison with another angle needs care, which is why the tilt check uses <code>atan2</code> of a cross and dot product instead of subtracting angles.</p>
+
+      <h3>Destroying bodies</h3>
+      <p>Only destroy bodies outside <code>world.step()</code>. <code>world.destroyBody()</code> also destroys the body's fixtures and any joints attached to it. It also fires <code>endContact</code> for every contact the body was in, so the listener can be called for an object that is about to disappear. Restart handles this by replacing the whole <code>Ship</code> object after removing its body.</p>
 
       <h3>Native memory</h3>
-      <p>Anything backed by C++ must be disposed: shapes after creating fixtures, the debug renderer and the world when the game exits. Java's garbage collector won't do it.</p>
-
-      <h3>The singleton world</h3>
-      <p><code>PhysicsWorld.getInstance()</code> is convenient, but it lives for the whole program. Restarting after a crash or loading a new level will need a way to destroy bodies or create a fresh world.</p>
+      <p>Anything backed by C++ must be disposed: shapes after creating fixtures, the debug renderer, and the world when the game exits (<code>GameWorld.dispose()</code>). Java's garbage collector won't do it.</p>
     </section>
 
     <!-- 12 -->
-    <section id="next">
+    <section id="testing">
       <div class="sec-num">12</div>
+      <h2>Testing physics headless</h2>
+      <p>The simulation classes never touch <code>Gdx.graphics</code> or input, so Box2D runs fine in a plain JUnit test. It only needs the native libraries loaded:</p>
+<pre><code>@BeforeAll
+<span class="k">static void</span> loadNatives() {
+    GdxNativesLoader.load();   <span class="c">// libGDX core natives (ChainShape uses BufferUtils)</span>
+    Box2D.init();
+}</code></pre>
+      <p class="file">core/src/test/java/…/world/ShipFlightTest.java</p>
+      <p>The tests fly the real ship. A gentle upright touchdown lands and then falls asleep. A fast or tilted one crashes. Thrust wakes a parked ship. Attitude control reaches its turn rate and holds. Restart destroys the old body. Because the step is fixed, every run gives exactly the same result. Run them with <code>./gradlew test</code>.</p>
+    </section>
+
+    <!-- 13 -->
+    <section id="next">
+      <div class="sec-num">13</div>
       <h2>Next experiments</h2>
       <p>Each of these teaches one new Box2D idea on top of what Freefall already has.</p>
+
+      <h3>Landing legs with suspension</h3>
+      <p>The ship is already shaped for this. Rotation is torque-based, gravity reaches every dynamic body, fixtures have roles, and interpolation works per body. A sketch:</p>
+      <ol class="plain">
+        <li><strong>Hull becomes a polygon</strong> (≤ 8 vertices, convex), with leg mounts at its lower corners.</li>
+        <li><strong>Each leg is its own dynamic body</strong> with a small foot fixture tagged <code>LANDING_FOOT</code>, joined to the hull by a <code>PrismaticJoint</code>. The joint slides along the leg's axis, with <code>enableLimit</code> for the travel.</li>
+        <li><strong>Suspension.</strong> Box2D 2.3's prismatic joint has no spring, so add Hooke's law yourself in <code>beforeStep</code>: <code>F = −k·(x − rest) − c·v</code>, using <code>getJointTranslation()</code> and <code>getJointSpeed()</code>. Apply it equal and opposite to hull and foot. The hull visibly sinks onto its legs, and the limits act as bump stops.</li>
+        <li><strong>Rules.</strong> Landed when both feet touch and the ship has settled. Crashed when the hull touches, or when a leg hits its limit too fast.</li>
+        <li><strong>Rendering.</strong> Draw each leg from the hull mount to the interpolated foot position. A pixel-art leg is then a sprite stretched or swapped by compression.</li>
+      </ol>
+
       <div class="table-wrap">
         <table>
           <thead><tr><th>Experiment</th><th>You'll learn</th><th>Start with</th></tr></thead>
           <tbody>
-            <tr><td>Fixed timestep</td><td>Deterministic simulation</td><td>The accumulator loop in section 4</td></tr>
-            <tr><td>Atmosphere zone</td><td>Sensors</td><td>A second <code>CircleShape</code> fixture on each planet, radius 1.8 × planet, <code>isSensor = true</code>. Start drag or heat in <code>beginContact</code>.</td></tr>
+            <tr><td>Atmosphere zone</td><td>Sensors</td><td>A second <code>CircleShape</code> fixture on each planet, radius <code>ATMOSPHERE_RADIUS</code>, <code>isSensor = true</code>, with a new category that only the ship masks in. Start drag or heat in <code>beginContact</code>.</td></tr>
             <tr><td>Impulse-based damage</td><td><code>postSolve</code> and <code>ContactImpulse</code></td><td>Replace the speed check with <code>impulse.getNormalImpulses()[0]</code></td></tr>
-            <tr><td>Landing legs</td><td>Multiple fixtures on one body</td><td>Two small polygon fixtures under the hull; land when both touch</td></tr>
-            <tr><td>Debris on crash</td><td>Deferred body creation</td><td>Set a flag in the listener, spawn small dynamic bodies after <code>step()</code></td></tr>
-            <tr><td>Collision filtering</td><td><code>categoryBits</code> / <code>maskBits</code></td><td>Make debris ignore the ship but hit terrain</td></tr>
+            <tr><td>Debris on crash</td><td>Deferred body creation, <code>bullet</code></td><td>Set a flag in <code>afterStep</code>, spawn small dynamic bodies after the step loop</td></tr>
+            <tr><td>Collision filtering</td><td><code>categoryBits</code> / <code>maskBits</code></td><td>Add a <code>DEBRIS</code> category that hits terrain but not the ship</td></tr>
+            <tr><td>Trajectory line</td><td>Reusing pure physics functions</td><td>Integrate <code>PlanetaryGravity.accelerationAt()</code> forward with the fixed <code>TIME_STEP</code></td></tr>
           </tbody>
         </table>
       </div>

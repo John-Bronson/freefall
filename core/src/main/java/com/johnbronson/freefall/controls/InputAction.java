@@ -11,5 +11,8 @@ public enum InputAction {
     PAN_CAM_DOWN,
     ZOOM_IN,
     ZOOM_OUT,
+    TOGGLE_CAMERA_LOCK,
+    TOGGLE_DEBUG,
+    RESTART,
     EXIT
 }

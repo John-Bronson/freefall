@@ -27,6 +27,12 @@ public class KeyboardBindings implements InputBinding {
                 return Gdx.input.isKeyJustPressed(Input.Keys.Z);
             case ZOOM_OUT:
                 return Gdx.input.isKeyJustPressed(Input.Keys.X);
+            case TOGGLE_CAMERA_LOCK:
+                return Gdx.input.isKeyJustPressed(Input.Keys.L);
+            case TOGGLE_DEBUG:
+                return Gdx.input.isKeyJustPressed(Input.Keys.APOSTROPHE);
+            case RESTART:
+                return Gdx.input.isKeyJustPressed(Input.Keys.R);
             case EXIT:
                 return Gdx.input.isKeyJustPressed(Input.Keys.Q);
             default:

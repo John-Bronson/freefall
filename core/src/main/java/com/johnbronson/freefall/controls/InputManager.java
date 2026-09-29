@@ -1,21 +1,48 @@
 package com.johnbronson.freefall.controls;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.controllers.Controller;
-import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.controllers.ControllerAdapter;
+import com.badlogic.gdx.controllers.Controllers;
 
-public class InputManager {
-    private KeyboardBindings keyboardBindings;
+/**
+ * Merges keyboard and gamepad input into game actions. Register it with
+ * {@code Controllers.addListener} so it follows controllers being plugged in and out.
+ */
+public class InputManager extends ControllerAdapter {
+    private final KeyboardBindings keyboardBindings = new KeyboardBindings();
     private ControllerBindings controllerBindings;
+    private Controller activeController;
 
     public InputManager() {
-        this.keyboardBindings = new KeyboardBindings();
-        this.controllerBindings = null;
+        if (Controllers.getControllers().size > 0) {
+            setController(Controllers.getControllers().first());
+        }
     }
 
-    public void setController(Controller controller) {
+    private void setController(Controller controller) {
+        activeController = controller;
+        controllerBindings = controller == null ? null : new ControllerBindings(controller);
         if (controller != null) {
-            this.controllerBindings = new ControllerBindings(controller);
+            Gdx.app.log("InputManager", "Using controller: " + controller.getName());
         }
+    }
+
+    @Override
+    public void connected(Controller controller) {
+        setController(controller);
+    }
+
+    @Override
+    public void disconnected(Controller controller) {
+        if (controller == activeController) {
+            Gdx.app.log("InputManager", "Controller disconnected: " + controller.getName());
+            setController(null);
+        }
+    }
+
+    public Controller getActiveController() {
+        return activeController;
     }
 
     public boolean isPressed(InputAction action) {
