@@ -35,6 +35,9 @@ public class Main extends ApplicationAdapter implements ControllerListener {
     private boolean cameraLock = true;
     private InputManager inputManager;
     private Controller activeController = null;
+    
+    private PhysicsWorld physicsWorld;
+    private GameContactListener contactListener;
 
     @Override
     public void create() {
@@ -46,6 +49,11 @@ public class Main extends ApplicationAdapter implements ControllerListener {
         cam.position.set(0,0, 0);
         hudCam = new OrthographicCamera(800, 600);
         hudCam.setToOrtho(false, 800, 600);
+        
+        physicsWorld = PhysicsWorld.getInstance();
+        contactListener = new GameContactListener();
+        physicsWorld.getWorld().setContactListener(contactListener);
+        
         planet1 = new Planet(-2400, 0);
         planet2 = new Planet(2400, 0);
         shape = new ShapeRenderer();
@@ -68,12 +76,15 @@ public class Main extends ApplicationAdapter implements ControllerListener {
         handleInput();
         ScreenUtils.clear(0.15f, 0.15f, 0.2f, 1f);
 
+        float deltaTime = Gdx.graphics.getDeltaTime();
+        physicsWorld.update(deltaTime);
+        
+        ship.applyGravity(planet1, planet2, deltaTime);
+        ship.update(deltaTime);
+
         cam.update();
         batch.setProjectionMatrix(cam.combined);
         shape.setProjectionMatrix(cam.combined);
-
-        ship.applyGravity(planet1, planet2, Gdx.graphics.getDeltaTime());
-        ship.update(Gdx.graphics.getDeltaTime());
 
         planet1.draw(shape);
         planet2.draw(shape);
@@ -82,22 +93,23 @@ public class Main extends ApplicationAdapter implements ControllerListener {
         hud.render(batch);
 
         if (cameraLock) {
-            float distToPlanet1 = (float)Math.sqrt(Math.pow(ship.x - planet1.x, 2) + Math.pow(ship.y - planet1.y, 2));
-            float distToPlanet2 = (float)Math.sqrt(Math.pow(ship.x - planet2.x, 2) + Math.pow(ship.y - planet2.y, 2));
+            float distToPlanet1 = (float)Math.sqrt(Math.pow(ship.getX() - planet1.x, 2) + Math.pow(ship.getY() - planet1.y, 2));
+            float distToPlanet2 = (float)Math.sqrt(Math.pow(ship.getX() - planet2.x, 2) + Math.pow(ship.getY() - planet2.y, 2));
 
             float minDist = Math.min(distToPlanet1, distToPlanet2);
 
             if (minDist < 1200) {
                 Planet target = distToPlanet1 < distToPlanet2 ? planet1 : planet2;
-                cam.position.set(ship.x, ship.y, 0);
+                cam.position.set(ship.getX(), ship.getY(), 0);
                 cam.zoom = 1f;
             } else {
-                cam.position.set(ship.x, ship.y, 0);
+                cam.position.set(ship.getX(), ship.getY(), 0);
             }
         }
 
         if (debugMode) {
             renderDebug();
+            physicsWorld.renderDebug(cam);
         }
     }
 
@@ -118,20 +130,14 @@ public class Main extends ApplicationAdapter implements ControllerListener {
             ship.setAngle(ship.getAngle() - rotationSpeed);
         }
 
-        float thrustAmount = 0;
         if (inputManager.isPressed(InputAction.THRUST_SOLID)) {
             ship.useSolidBoost();
         } else if (inputManager.isPressed(InputAction.THRUST_MAIN)) {
             float fuelConsumptionRate = 1.0f;
-            if (ship.consumeMainFuel(fuelConsumptionRate * Gdx.graphics.getDeltaTime())) {
-                thrustAmount = ship.acceleration;
+            boolean hasFuel = ship.consumeMainFuel(fuelConsumptionRate * Gdx.graphics.getDeltaTime());
+            if (hasFuel) {
+                ship.applyMainThrust(Gdx.graphics.getDeltaTime());
             }
-        }
-
-        if (thrustAmount != 0) {
-            double angleRad = ship.angle * Constants.MILS_TO_RADIANS;
-            ship.vx += (float)Math.cos(angleRad) * thrustAmount * Gdx.graphics.getDeltaTime();
-            ship.vy += (float)Math.sin(angleRad) * thrustAmount * Gdx.graphics.getDeltaTime();
         }
 
         if (inputManager.isPressed(InputAction.PAN_CAM_LEFT)) {
@@ -191,6 +197,7 @@ public class Main extends ApplicationAdapter implements ControllerListener {
         image.dispose();
         shape.dispose();
         hud = null;
+        physicsWorld.dispose();
     }
 
     @Override

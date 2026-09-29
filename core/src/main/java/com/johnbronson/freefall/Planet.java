@@ -2,6 +2,11 @@ package com.johnbronson.freefall;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.physics.box2d.Body;
+import com.badlogic.gdx.physics.box2d.ChainShape;
+import com.badlogic.gdx.physics.box2d.Fixture;
+import com.badlogic.gdx.physics.box2d.FixtureDef;
+import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 
 public class Planet {
@@ -15,6 +20,8 @@ public class Planet {
     Color color;
     Color atmosphereColor;
     float[] terrainPoints = new float[Constants.MILS_PER_CIRCLE];
+    
+    Body physicsBody;
 
     public Planet(float x, float y, float radius) {
         this.x = x;
@@ -27,10 +34,43 @@ public class Planet {
         makeLandingZones();
         System.out.println("First terrain point: " + terrainPoints[0]);
         System.out.println("Last terrain point: " + terrainPoints[6399]);
+        
+        PhysicsWorld world = PhysicsWorld.getInstance();
+        physicsBody = world.createBody(true, x, y);
+        
+        ChainShape chain = createTerrainChain();
+        FixtureDef fixtureDef = new FixtureDef();
+        fixtureDef.shape = chain;
+        fixtureDef.isSensor = false;
+        physicsBody.createFixture(fixtureDef);
     }
 
     public Planet(float x, float y) {
         this(x, y, DEFAULT_RADIUS);
+    }
+    
+    private ChainShape createTerrainChain() {
+        int step = 64;
+        int numVertices = (terrainPoints.length / step) + 1;
+        com.badlogic.gdx.math.Vector2[] vertices = new com.badlogic.gdx.math.Vector2[numVertices];
+        
+        for (int i = 0; i < terrainPoints.length; i += step) {
+            float distance = terrainPoints[i] * radius;
+            float angle = i * Constants.MILS_TO_RADIANS;
+            
+            int idx = i / step;
+            vertices[idx] = new com.badlogic.gdx.math.Vector2(
+                (x + distance * (float)Math.cos(angle)) / PhysicsWorld.PIXELS_PER_METER,
+                (y + distance * (float)Math.sin(angle)) / PhysicsWorld.PIXELS_PER_METER
+            );
+        }
+        
+        vertices[numVertices - 1] = vertices[0];
+        
+        ChainShape chain = new ChainShape();
+        chain.createChain(vertices);
+        
+        return chain;
     }
 
     public void draw(ShapeRenderer shape) {

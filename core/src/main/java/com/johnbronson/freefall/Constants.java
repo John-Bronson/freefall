@@ -7,8 +7,11 @@ public class Constants
     public static final float MILS_TO_DEGREES = 360f / 6400f;  // ≈ 0.05625
     public static final float RADIANS_TO_MILS = 6400f / (2f * (float)Math.PI);
     public static final float DEGREES_TO_MILS = 6400f / 360f;  // ≈ 17.778
+    public static final float RADIANS_TO_DEGREES = 360f / (2f * (float)Math.PI);
 
-    public static final float GRAVITATIONAL_CONSTANT = 85000000f;
-
+    public static final float GRAVITATIONAL_CONSTANT = 85000f;
     public static final float SOLID_BOOST_ACCELERATION = 150f;
+    public static final float MAIN_THRUST_ACCELERATION = 25f;
+
+    public static final float MAX_LANDING_ANGLE = 0.2618f;  // 15 degrees in radians
 }
