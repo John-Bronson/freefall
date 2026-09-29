@@ -32,6 +32,7 @@ public class Main extends ApplicationAdapter implements ControllerListener {
     private HUD hud;
 
     private boolean debugMode = false;
+    private boolean cameraLock = true;
     private InputManager inputManager;
     private Controller activeController = null;
 
@@ -41,12 +42,12 @@ public class Main extends ApplicationAdapter implements ControllerListener {
         image = new Texture("libgdx.png");
         font = new BitmapFont();
         cam = new OrthographicCamera(800, 600);
-        cam.zoom = 2f;
+        cam.zoom = 4f;
         cam.position.set(0,0, 0);
         hudCam = new OrthographicCamera(800, 600);
         hudCam.setToOrtho(false, 800, 600);
-        planet1 = new Planet(-1200, 0);
-        planet2 = new Planet(1200, 0);
+        planet1 = new Planet(-2400, 0);
+        planet2 = new Planet(2400, 0);
         shape = new ShapeRenderer();
         ship = new Ship(0, 0, 45);
         hud = new HUD(ship);
@@ -80,6 +81,21 @@ public class Main extends ApplicationAdapter implements ControllerListener {
 
         hud.render(batch);
 
+        if (cameraLock) {
+            float distToPlanet1 = (float)Math.sqrt(Math.pow(ship.x - planet1.x, 2) + Math.pow(ship.y - planet1.y, 2));
+            float distToPlanet2 = (float)Math.sqrt(Math.pow(ship.x - planet2.x, 2) + Math.pow(ship.y - planet2.y, 2));
+
+            float minDist = Math.min(distToPlanet1, distToPlanet2);
+
+            if (minDist < 1200) {
+                Planet target = distToPlanet1 < distToPlanet2 ? planet1 : planet2;
+                cam.position.set(ship.x, ship.y, 0);
+                cam.zoom = 1f;
+            } else {
+                cam.position.set(ship.x, ship.y, 0);
+            }
+        }
+
         if (debugMode) {
             renderDebug();
         }
@@ -92,6 +108,8 @@ public class Main extends ApplicationAdapter implements ControllerListener {
             Gdx.app.exit();
         } else if (Gdx.input.isKeyJustPressed(Input.Keys.APOSTROPHE)) {
             debugMode = !debugMode;
+        } else if (Gdx.input.isKeyJustPressed(Input.Keys.L)) {
+            cameraLock = !cameraLock;
         }
 
         if (inputManager.isPressed(InputAction.ROTATE_LEFT)) {

@@ -5,11 +5,11 @@ import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 
 public class Planet {
-    private static final float DEFAULT_RADIUS = 300;
+    private static final float DEFAULT_RADIUS = 600;
     float minHeight = 1.0f;
     float maxHeight = 1.3f;
     float landingHeight = 1.15f;
-    float atmosphereHeight = 1.6f;
+    float atmosphereHeight = 1.8f;
 
     float x, y, radius, mass;
     Color color;
