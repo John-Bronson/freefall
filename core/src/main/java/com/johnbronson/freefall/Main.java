@@ -76,11 +76,11 @@ public class Main extends ApplicationAdapter implements ControllerListener {
         handleInput();
         ScreenUtils.clear(0.15f, 0.15f, 0.2f, 1f);
 
+        // Apply all forces first; Box2D consumes and clears them during step()
         float deltaTime = Gdx.graphics.getDeltaTime();
-        physicsWorld.update(deltaTime);
-        
         ship.applyGravity(planet1, planet2, deltaTime);
         ship.update(deltaTime);
+        physicsWorld.update(deltaTime);
 
         cam.update();
         batch.setProjectionMatrix(cam.combined);

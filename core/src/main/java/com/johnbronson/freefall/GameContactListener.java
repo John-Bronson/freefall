@@ -68,21 +68,26 @@ public class GameContactListener implements ContactListener {
         Vector2 velB = bodyB.getLinearVelocityFromWorldPoint(
             contact.getWorldManifold().getPoints()[0]);
         
-        Vector2 relativeVel = velA.sub(velB);
-        return relativeVel.len();
+        // cpy(): Box2D reuses these Vector2 instances, so don't mutate them
+        Vector2 relativeVel = velA.cpy().sub(velB);
+
+        // Box2D speeds are in m/s; convert to px/s to match the rest of the game
+        return relativeVel.len() * PhysicsWorld.PIXELS_PER_METER;
     }
-    
+
     private void checkLandingOrientation(Ship ship, Body planetBody) {
         Body shipBody = ship.getBody();
-        
+
         Vector2 shipPos = shipBody.getPosition();
         Vector2 planetPos = planetBody.getPosition();
-        
-        Vector2 toPlanet = planetPos.sub(shipPos);
-        float angleToPlanet = (float)Math.atan2(toPlanet.y, toPlanet.x);
-        
-        float shipAngle = shipBody.getAngle();
-        float angleDiff = Math.abs(angleToPlanet - shipAngle);
+
+        // "Up" at the landing site points from the planet center out to the ship
+        Vector2 up = shipPos.cpy().sub(planetPos);
+        float upAngle = (float)Math.atan2(up.y, up.x);
+
+        // Wrap the difference into [-PI, PI] so e.g. 359° vs 1° reads as 2°
+        float diff = shipBody.getAngle() - upAngle;
+        float angleDiff = Math.abs((float)Math.atan2(Math.sin(diff), Math.cos(diff)));
         
         if (angleDiff < Constants.MAX_LANDING_ANGLE) {
             ship.land();

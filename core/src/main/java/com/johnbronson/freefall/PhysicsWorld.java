@@ -17,7 +17,8 @@ public class PhysicsWorld {
     public static final float PIXELS_PER_METER = 10f;
     
     private PhysicsWorld() {
-        world = new World(new Vector2(0, -9.8f), false);
+        // No global gravity: planet gravity is applied manually in Ship.applyGravity
+        world = new World(new Vector2(0, 0), false);
         debugRenderer = new Box2DDebugRenderer();
     }
     
@@ -48,7 +49,8 @@ public class PhysicsWorld {
     }
     
     public void renderDebug(OrthographicCamera camera) {
-        debugRenderer.render(world, camera.combined);
+        // Camera works in pixels, Box2D in meters: scale the matrix to match
+        debugRenderer.render(world, camera.combined.cpy().scl(PIXELS_PER_METER));
     }
     
     public void dispose() {

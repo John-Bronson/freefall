@@ -43,6 +43,7 @@ public class Planet {
         fixtureDef.shape = chain;
         fixtureDef.isSensor = false;
         physicsBody.createFixture(fixtureDef);
+        chain.dispose();
     }
 
     public Planet(float x, float y) {
@@ -50,25 +51,24 @@ public class Planet {
     }
     
     private ChainShape createTerrainChain() {
-        int step = 64;
-        int numVertices = (terrainPoints.length / step) + 1;
-        com.badlogic.gdx.math.Vector2[] vertices = new com.badlogic.gdx.math.Vector2[numVertices];
-        
+        int step = 50; // matches the step used in draw()
+        int numVertices = terrainPoints.length / step;
+        Vector2[] vertices = new Vector2[numVertices];
+
         for (int i = 0; i < terrainPoints.length; i += step) {
-            float distance = terrainPoints[i] * radius;
+            // terrainPoints are already absolute distances in pixels
+            float distance = terrainPoints[i];
             float angle = i * Constants.MILS_TO_RADIANS;
-            
-            int idx = i / step;
-            vertices[idx] = new com.badlogic.gdx.math.Vector2(
-                (x + distance * (float)Math.cos(angle)) / PhysicsWorld.PIXELS_PER_METER,
-                (y + distance * (float)Math.sin(angle)) / PhysicsWorld.PIXELS_PER_METER
+
+            // Vertices are local to the body, which is already positioned at the planet center
+            vertices[i / step] = new Vector2(
+                distance * (float)Math.cos(angle) / PhysicsWorld.PIXELS_PER_METER,
+                distance * (float)Math.sin(angle) / PhysicsWorld.PIXELS_PER_METER
             );
         }
-        
-        vertices[numVertices - 1] = vertices[0];
-        
+
         ChainShape chain = new ChainShape();
-        chain.createChain(vertices);
+        chain.createLoop(vertices);
         
         return chain;
     }
