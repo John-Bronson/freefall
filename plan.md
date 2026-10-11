@@ -114,7 +114,7 @@ Drag depends on velocity, not position, and opposes it. With a large step it can
 
 ## Phase 7: Space Station Docking & Basic Audio
 
-- [ ] Add collision detection for docking with station orbiting planet 1
+- [ ] Add collision detection for docking with station orbiting planet 1 (one tagged fixture per docking bay; see "Art Direction: Chunky Pixel Rendering")
 - [ ] Implement docking criteria - must match station's velocity (or get close enough) plus low relative velocity and proximity
 - [ ] Docking refills fuel AND repairs heat damage/cools ship
 - [ ] Add visual feedback for successful dock
@@ -146,7 +146,7 @@ Drag depends on velocity, not position, and opposes it. With a large step it can
 
 ## Phase 9.5: Space Station
 
-- [ ] Position space station sprite in orbit around planet 1
+- [ ] Position space station sprite in orbit around planet 1 (drawn through the low-res framebuffer; see "Art Direction: Chunky Pixel Rendering")
 - [ ] Station orbits with the moving/rotating planet system
 - [ ] Test: Does the station move consistently with the rest of the world?
 
@@ -166,6 +166,56 @@ Drag depends on velocity, not position, and opposes it. With a large step it can
 - [ ] Add restart/menu functionality
 - [ ] Victory screen
 - [ ] Test: Play the full game loop multiple times
+
+## Art Direction: Chunky Pixel Rendering (design notes, 2026-10-10)
+
+Strategy agreed in discussion; nothing here is implemented yet. Visual reference: *Deep Space Exploitation* (procedural, noise-filled rocks drawn in chunky screen-aligned pixels, even when rotated).
+
+### Decisions
+
+- **No destruction in Freefall.** Planet and station shapes are fixed once generated, so physics stays as it is (Box2D bodies, terrain `ChainShape` from the seeded radii). The art is generated once and never rebuilt at runtime.
+- **The chunky look comes from a low-res framebuffer**, not from the assets: render the world into a small `FrameBuffer` (e.g. 480×270) with `Nearest` filtering, then draw it to the screen at an integer scale. Anything rotated is re-rasterized onto the coarse screen grid, which is why DSE's edges stay screen-aligned on rotated rocks. The HUD is drawn separately.
+- **Planet art is a cell grid baked to a texture, once per planet:**
+  - Shape mask comes from the same `Terrain` radii the chain shape uses (cell is solid if its distance from the centre is less than the terrain radius at its angle), so art and collision cannot drift apart.
+  - Colour comes from fractal noise (several octaves of simplex/Perlin) quantized into 3–4 palette bands, with per-cell random jitter before quantizing to get speckled band edges.
+  - Landing-zone stripes are painted into the same grid.
+  - Seeded like the terrain. LibGDX has no noise built in; FastNoiseLite (single Java file) is one option. Write into a `Pixmap`, upload as a `Texture`.
+- **Ship and station are ordinary sprites** drawn through the same framebuffer. Their physics stays polygon fixtures; no per-pixel collision.
+- **Station docking bays are identified by fixture, not by pixel lookup:**
+  - Hull is a set of polygon fixtures on one body (kinematic once it orbits in Phase 8).
+  - Each docking bay is a "garage": solid walls (part of the hull fixtures) around a square interior, with a door across the opening.
+  - Each bay has two sensor fixtures tagged through `FixtureRole` user data, carrying the bay's identity: a large **approach** sensor outside the door (opens it) and a **capture** sensor inside.
+  - A sensor only reports overlap, not "fully inside". Either inset the capture sensor so that touching it implies the ship is well inside, or test the ship's position in station-local coordinates against the bay rectangle.
+  - Docking rule: ship in the capture zone AND speed *relative to the station* below a threshold, held for N seconds (count fixed steps; reset the timer if either condition breaks). Relative speed matters once the station orbits: compare against the station's velocity at the ship's position (`Body.getLinearVelocityFromWorldPoint`).
+  - Capture: once the timer completes, attach the ship to the station (e.g. a `WeldJoint`) so it rides along; destroy the joint to undock.
+  - Door: its own solid fixture (or small kinematic body that slides) which stops blocking when open, plus its own sprite frames layered over the hull sprite. Change fixtures only after the step, never in a contact callback.
+  - The contact listener only records sensor begin/end; the rules above run after the step, same pattern as `ShipContactListener` → `Ship.afterStep`.
+  - If the exact touch point is ever needed: take the contact's world manifold point and convert with `Body.getLocalPoint`.
+  - Alternative considered: a second "ID mask" image aligned with the station art, looked up at the contact point. Worth it only if there are many irregular regions; overkill for a few bays.
+- All of this lives in `render/` except the docking-bay fixtures (`world/`).
+
+### Open decisions
+
+- **Cell size in metres.** Drives everything. Planet terrain is up to 156 m across: 0.25 m/cell is about 624 cells (fits a 1024 texture), 0.5 m/cell about 312. Pick it from how many pixels wide the ship should be on screen.
+- **Zoom.** Smooth zoom (Phase 6) makes art texels shimmer as the texel-to-screen-pixel ratio passes through non-integers. Options: snap zoom to integer steps, or accept it (rotation already resamples every frame, so it may be tolerable). Decide by trying it.
+
+### Suggested order
+
+1. Low-res framebuffer with the current renderers (small change, most of the look).
+2. Noise-filled planet textures in `PlanetRenderer`.
+3. Ship sprite.
+4. Station sprite and docking-bay fixtures (with Phase 7 / 9.5).
+
+### If destruction is ever revisited
+
+DSE cuts rocks one pixel at a time, which points to the Noita-style approach: a cell grid per body in **body-local space** as the source of truth, with texture and fixtures both derived from it.
+
+- Hit: world point → `Body.getLocalPoint` → cell index → clear cell. The grid data itself never rotates.
+- Rebuild: marching squares → Douglas–Peucker simplify → triangulate (`EarClippingTriangulator`) → replace fixtures. Batch to at most once per physics step, per dirty body, never inside a contact callback.
+- Fragments: flood fill for detached islands; each becomes a new body with its own grid, the parent's angle, and the parent's velocity at that point.
+- Tiny islands become particles (Box2D rejects very small polygons). Planet-sized grids need chunking.
+- Reference: GDC talk "Exploring the Tech and Design of Noita".
+- Rejected for this: polygon boolean clipping (cannot do per-pixel cuts without vertex counts exploding) and Voronoi fracture (shatters, cannot carve).
 
 ## Debug Tools to Build Along the Way
 
