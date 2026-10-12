@@ -1,4 +1,7 @@
 # Complete Development Phases
+
+**Visual inspiration:** *Teleglitch* and *Deep Space Exploitation* — chunky, low-resolution pixels with freely rotating sprites and a restricted palette. Details are in "Art Direction: Chunky Pixel Rendering" below.
+
 ## Phase 0: Foundation ✓ (COMPLETED!)
 
 - [x] Set up world coordinate system with barycenter at origin (0,0)
@@ -167,14 +170,26 @@ Drag depends on velocity, not position, and opposes it. With a large step it can
 - [ ] Victory screen
 - [ ] Test: Play the full game loop multiple times
 
-## Art Direction: Chunky Pixel Rendering (design notes, 2026-10-10)
+## Art Direction: Chunky Pixel Rendering (design notes, 2026-10-10, updated 2026-10-11)
 
-Strategy agreed in discussion; nothing here is implemented yet. Visual reference: *Deep Space Exploitation* (procedural, noise-filled rocks drawn in chunky screen-aligned pixels, even when rotated).
+Strategy agreed in discussion; nothing here is implemented yet. Visual references: *Deep Space Exploitation* (procedural, noise-filled rocks drawn in chunky screen-aligned pixels, even when rotated) and *Teleglitch* (tiny, abstract sprites rotating freely on a very coarse grid).
 
 ### Decisions
 
 - **No destruction in Freefall.** Planet and station shapes are fixed once generated, so physics stays as it is (Box2D bodies, terrain `ChainShape` from the seeded radii). The art is generated once and never rebuilt at runtime.
-- **The chunky look comes from a low-res framebuffer**, not from the assets: render the world into a small `FrameBuffer` (e.g. 480×270) with `Nearest` filtering, then draw it to the screen at an integer scale. Anything rotated is re-rasterized onto the coarse screen grid, which is why DSE's edges stay screen-aligned on rotated rocks. The HUD is drawn separately.
+- **The chunky look comes from a low-res framebuffer**, not from the assets: render the world into a small `FrameBuffer` with `Nearest` filtering, then draw it to the screen at an integer scale. Anything rotated is re-rasterized onto the coarse screen grid, which is why DSE's edges stay screen-aligned on rotated rocks. The HUD is drawn separately.
+  - **Starting size: 640×480.** It is 4:3, matching the 80×60 m minimum view, so it gives 8 px per metre at zoom 1.
+  - The window is currently 640×480 too (`Lwjgl3Launcher`), which would be 1:1 and not chunky. Show it at 2× (1280×960) or 3× (1920×1440, exactly the height of the 3440×1440 dev monitor; pillarboxed if fullscreen).
+  - Gotchas: the framebuffer's colour texture comes out vertically flipped, and the viewport must be applied against the framebuffer's size (not the window's) while drawing into it.
+- **Target is the modern Teleglitch/DSE look, not an authentic 1993 VGA game.** That means:
+  - Free rotation through the framebuffer; no pre-baked facings.
+  - No palette-index shader and no palette cycling. Assets are ordinary RGBA PNGs.
+  - The palette is a style discipline enforced at authoring time: draw in indexed colour mode with one shared palette file kept in the repo. Aim for 16–32 colours built as a few ramps, not 256. Optional: a JUnit test that loads each PNG as a `Pixmap` and asserts every opaque pixel is in the palette.
+  - Effects may leave the palette (alpha, tinting, additive glow for re-entry heat and thruster flame).
+- **Ship sprite starts at 12×12 px**, drawn at 8 px per metre to match the current 1.5 m tall, 1.2 m wide ship. Expect an icon: silhouette, a differently coloured nose for the heat shield, leg stubs, 3–4 colours. No 1 px details that must survive rotation (they drop out under `Nearest`).
+  - The sprite's resolution must match its drawn size at the closest zoom. Larger wastes detail and shimmers; smaller turns texels into fat rotated squares.
+  - At cruise zoom (4×) the ship is about 3 px; swap it for a simple marker at that distance if needed.
+- **Art tool: Pixelorama** (free, open source; Flatpak `com.orama_interactive.Pixelorama`, hidden in Mint's Software Manager because the Flathub listing is unverified, though it is the developer's own package). Indexed mode exists since v1.1. Keep the `.pxo` project files in git alongside the exported PNGs. Aseprite (~$20) is the upgrade if the tooling becomes limiting.
 - **Planet art is a cell grid baked to a texture, once per planet:**
   - Shape mask comes from the same `Terrain` radii the chain shape uses (cell is solid if its distance from the centre is less than the terrain radius at its angle), so art and collision cannot drift apart.
   - Colour comes from fractal noise (several octaves of simplex/Perlin) quantized into 3–4 palette bands, with per-cell random jitter before quantizing to get speckled band edges.
@@ -196,7 +211,13 @@ Strategy agreed in discussion; nothing here is implemented yet. Visual reference
 
 ### Open decisions
 
-- **Cell size in metres.** Drives everything. Planet terrain is up to 156 m across: 0.25 m/cell is about 624 cells (fits a 1024 texture), 0.5 m/cell about 312. Pick it from how many pixels wide the ship should be on screen.
+- **Cell size in metres.** Drives everything. Planet terrain is up to 156 m across: 0.25 m/cell is about 624 cells (fits a 1024 texture), 0.5 m/cell about 312. Pick it from how many pixels wide the ship should be on screen. With the 640×480 framebuffer at 8 px/m, a 1:1 match is 0.125 m/cell, about 1248 cells, which needs a 2048 texture; 0.25 m/cell gives 2×2 framebuffer pixels per cell at zoom 1.
+- **Is a 12 px ship enough?** Decide by looking at it rotating through the framebuffer. If it needs to be bigger, the options are:
+  - Approach zoom of 0.75 (45 m view): about 16 px.
+  - Double the ship to 3 m (retune `HULL_RADIUS`, mass, thrust): about 24 px. Both together: about 32 px.
+  - Two-stage zoom: ease in further only when the ship is slow and close to the ground.
+  - Zooming in alone cannot reach 32 px at 1.5 m: the view would be 22.5 m tall, narrower than a landing zone (about 27 m), and crossed in about 2 s at the 10 m/s landing limit.
+  - Upper bound: keep the ship to roughly 8–15% of the framebuffer height when landing, so the terrain ahead stays visible.
 - **Zoom.** Smooth zoom (Phase 6) makes art texels shimmer as the texel-to-screen-pixel ratio passes through non-integers. Options: snap zoom to integer steps, or accept it (rotation already resamples every frame, so it may be tolerable). Decide by trying it.
 
 ### Suggested order
