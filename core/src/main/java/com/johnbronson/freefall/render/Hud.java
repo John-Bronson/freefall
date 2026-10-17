@@ -33,8 +33,9 @@ public final class Hud implements Disposable {
 
     public void render(GameWorld world) {
         Ship ship = world.getShip();
-        Vector2 position = ship.getBody().getPosition();
+        Vector2 position = ship.getHull().getPosition(world.getAlpha());
         Planet nearest = world.nearestPlanetTo(position);
+        boolean inAtmosphere = nearest.isInAtmosphere(position);
         // Clamped: a flat segment dips slightly below the curve through its vertices.
         float altitude = Math.max(0f, nearest.altitudeOf(position) - Ship.HULL_RADIUS);
 
@@ -48,6 +49,7 @@ public final class Hud implements Disposable {
         y = line(ship.isBoosterBurning() ? "Booster BURNING" : "Booster x" + ship.getBoosterCharges(), y);
         y = line(String.format("Speed %.1f m/s", ship.getBody().getLinearVelocity().len()), y);
         y = line(String.format("Altitude %.1f m", altitude), y);
+        y = line(inAtmosphere ? "In Atmo" : "In Vacuum", y);
 
         if (ship.getState() == Ship.FlightState.CRASHED) {
             y = line(ship.getCrashReason(), y);

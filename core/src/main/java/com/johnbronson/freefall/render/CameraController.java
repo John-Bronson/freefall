@@ -45,7 +45,7 @@ public final class CameraController {
         camera.position.set(shipPosition, 0f);
 
         Planet nearest = world.nearestPlanetTo(shipPosition);
-        boolean inAtmosphere = nearest.getCenter().dst(shipPosition) < Planet.ATMOSPHERE_RADIUS;
+        boolean inAtmosphere = nearest.isInAtmosphere(shipPosition);
         float targetZoom = inAtmosphere ? APPROACH_ZOOM : CRUISE_ZOOM;
         camera.zoom = MathUtils.lerp(camera.zoom, targetZoom, Math.min(1f, ZOOM_RESPONSE * frameDelta));
     }

@@ -111,6 +111,11 @@ public final class Planet {
         return out.set(MathUtils.cos(angle), MathUtils.sin(angle)).scl(surfaceRadius + height).add(center);
     }
 
+    /** True if {@code worldPoint} is inside the planet's atmosphere */
+    public boolean isInAtmosphere(Vector2 worldPoint) {
+        return getCenter().dst(worldPoint) < ATMOSPHERE_RADIUS;
+    }
+
     /** Height of {@code worldPoint} above the terrain directly below it, in meters. */
     public float altitudeOf(Vector2 worldPoint) {
         float dx = worldPoint.x - center.x;
