@@ -182,6 +182,26 @@ With Box2D, the planets switch from static to **kinematic** bodies, moved by set
 - [ ] Victory screen
 - [ ] Test: Play the full game loop multiple times
 
+## Phase 11: Difficulty Levels & Ship Types (ideas, 2026-10-17)
+
+Builds on everything above. Each level adds one new skill on top of the last.
+
+- [ ] **Level structure.** A level is a set of rules and limits (starting fuel, which objectives apply, which ship). Consider a small immutable config object per level that `GameWorld` is built from, rather than `if (level == 2)` checks spread through the code. Track progress: completing a level unlocks the next.
+- [ ] **Level 1: First descent.** Start docked at the space station and land on either planet. Teaches undocking, deorbiting and landing without needing a take-off first. Depends on the station (Phase 7 / 9.5), including undocking (destroying the dock joint).
+- [ ] **Level 2: Basic landing.** The current game: two planets, take off from planet 1, land on planet 2.
+- [ ] **Level 3: Fuel and docking.** Starting fuel is restricted so the trip can't be made on one tank. The player must dock with the space station (Phase 7) to refuel on the way.
+- [ ] **Level 4: Landing clearance.** Before entering planet 2's atmosphere, the player must request landing clearance. Clearance requires a stable orbit: staying within a distance band around planet 2 (outside the atmosphere) for a set time. Entering the atmosphere without clearance fails the level, or at least warns.
+    - Open questions: what counts as "an orbit" (time spent in the band, or a full 360° sweep around the planet)? Is clearance a key press or automatic once the orbit holds? Does clearance name a specific landing zone?
+    - The trajectory predictor (Phase 3.5) would help the player see whether their orbit is closed.
+
+### Alternative ship type (sketch)
+
+- [ ] **Glider / lifting body.** No lift-off boosters, but it generates **lift** in the atmosphere, so it can glide and trade speed for altitude.
+    - Requires modeling **angle of attack**: the angle between the ship's nose and its velocity. Heat already needs that same angle (Phase 3), so compute it in one place.
+    - Lift acts perpendicular to the velocity, scaled by air density × speed² × a lift curve of angle of attack (rises up to a stall angle, then drops). Box2D has no aerodynamics, so lift is a force applied before each step, like drag. Keep it a pure function so the predictor can use it.
+    - Ship type as data: thrust, fuel, boosters, lift and drag coefficients, hull shape. A level config picks the ship.
+    - Gameplay questions: how does it take off without boosters (runway roll on a landing zone? a launch from the station?) and is it a level of its own or a player choice?
+
 ## Art Direction: Chunky Pixel Rendering (design notes, 2026-10-10, updated 2026-10-11)
 
 Strategy agreed in discussion; nothing here is implemented yet. Visual references: *Deep Space Exploitation* (procedural, noise-filled rocks drawn in chunky screen-aligned pixels, even when rotated) and *Teleglitch* (tiny, abstract sprites rotating freely on a very coarse grid).
