@@ -59,4 +59,4 @@ The official LibGDX API documentation is hosted at: https://javadoc.io/doc/com.b
 
 ## Development Status
 
-See `plan.md` for the full phased development plan. Phase 0 (foundation) is complete. Phase 1 (terrain/atmosphere) is mostly complete. Phase 2 (ship controls/movement) is next.
+See `plan.md` for the full phased development plan. Phases 0–1 are complete, and Phase 2 is complete apart from two debug/visual items lost in the Box2D move. Phase 4 (collision) is done via Box2D, and Phase 3.5's refactor was superseded by it. Next up: the rest of Phase 3 (atmosphere, drag, heat) and the landing-zone check in Phase 5.

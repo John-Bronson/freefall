@@ -20,20 +20,24 @@
 - [x] Add debug visualization: color-code flat zones, show atmosphere boundaries
 - [x] Test: Do the landing zones look reasonable? Can you visually identify them?
 
-## Phase 2: Ship Rendering, Orientation & Basic Controls ✓
+## Phase 2: Ship Rendering, Orientation & Basic Controls
 
-- [x] Add lander sprite at a starting position on planet 1's surface
+Rebuilt on Box2D (2026-10): the ship is a dynamic body with a circular hull fixture. Thrust and the booster are forces along local +Y, and rotation is a torque-driven attitude controller (rate-limited "RCS"). Placeholder art is an outlined triangle in `ShipRenderer`.
+
+- [x] Add lander sprite at a starting position on planet 1's surface (spawns landed on planet 1's first landing zone)
 - [x] Ship has facing direction/angle (for heat shield orientation)
 - [x] Implement rotation controls (left/right arrows rotate the ship)
 - [x] Implement thrust (up arrow) - applies force in direction ship is facing
-- [x] Render thrust flame/particle effect when thrusting
-- [x] Visual indicator for heat shield direction (maybe different colored nose)
-- [x] Add velocity vector debug display (arrow showing ship's current velocity)
-- [x] Test: Can you thrust around and rotate? Does the ship respond predictably?
+- [x] Render thrust flame/particle effect when thrusting (main engine and booster flames)
+- [ ] Visual indicator for heat shield direction (maybe different colored nose). *Lost in the Box2D move: the hull is one color.*
+- [ ] Add velocity vector debug display (arrow showing ship's current velocity). *Lost in the Box2D move. `DebugOverlay` draws Box2D shapes but not velocity; `Box2DDebugRenderer` has a `drawVelocities` flag.*
+- [x] Test: Can you thrust around and rotate? Does the ship respond predictably? (`ShipFlightTest` covers lift-off and attitude hold)
 
 ## Phase 3: Gravity, Fuel & Atmospheric Drag
 
-- [x] Implement gravity from both planetoids (inverse-square law or simplified)
+Box2D's world gravity is zero. `PlanetaryGravity` applies Newtonian gravity toward every planet as a force before each step (`GameWorld.beforeStep`). Drag fits the same slot: a force applied before each step, computed from a pure function of position and velocity so the trajectory predictor can reuse it. Don't use Box2D's `linearDamping`; it applies everywhere and ignores the atmosphere. Heat and overheat checks are game rules, so they go in `Ship.afterStep` and reuse `crash(reason)`.
+
+- [x] Implement gravity from both planetoids (inverse-square law, `PlanetaryGravity`; tested in `PlanetaryGravityTest`)
 - [x] Add fuel counter to HUD
 - [x] Thrust consumes fuel
 - [ ] Detect when ship enters atmosphere zone (distance check from planet center)
@@ -47,59 +51,65 @@
 
 ## Phase 3.5: Physics Refactor & Trajectory Prediction
 
-Goal: draw a "coast" line ahead of the ship showing where it will go under gravity (and later drag) if the player stops thrusting. The predictor must run the *exact same* physics code as the real ship, on a throwaway copy of the state, so the line is deterministic.
+Goal: draw a "coast" line ahead of the ship showing where it will go under gravity (and later drag) if the player stops thrusting.
 
-### Refactor summary (do this first)
+### Refactor ✓ (superseded by the Box2D restructure, 2026-10)
 
-The current physics is split across `Ship.applyGravity`, `Ship.update`, and the call order in `Main.render`, and every piece mutates `Ship`'s fields directly. That makes it impossible to "fast forward" without moving the real ship. The refactor:
+The original plan was a hand-rolled `PhysicsState` plus a `PhysicsWorld.step(state, dt)`. Moving to Box2D got the same goals a different way:
 
-- [ ] Introduce a small mutable **physics state** type holding `x, y, vx, vy` (and `angle`, `solidBoostTimer` if boost is included in prediction). `Ship` owns one instance. Consider a `copyFrom(other)` method so the predictor can reuse a scratch instance instead of allocating.
-- [ ] Extract gravity into a **pure function** that computes acceleration at an arbitrary point and writes it into a caller-supplied `Vector2` (no `new` per call). Signature shape: `gravityAt(px, py, planet, Vector2 out)`. Neither `Ship` nor `Planet` fields are mutated by it.
-- [ ] Decide where `step` lives. **Decision: a `PhysicsWorld` class.** It owns the list of planets (and later the station / any other gravity source) and exposes `step(PhysicsState state, float dt)`. This mirrors Box2D's `World.step()` convention and keeps data (`PhysicsState`) separate from behavior (`PhysicsWorld`). `Main` creates one instance and passes it to whatever needs it (ship, predictor); no static singleton.
-- [ ] `step` does, in fixed order: sum gravity from all bodies, add boost acceleration if timer > 0, apply drag (Phase 3), update velocity, then update position (semi-implicit Euler). `Ship.update` becomes a thin call to `world.step(state, dt)`. `Main` no longer calls `applyGravity` and `update` separately.
-- [ ] `PhysicsWorld` stores planets as a collection (`Array<Planet>` or `List<Planet>`), not `planet1, planet2` fields, so adding bodies later (station, Phase 7+) is free.
-- [ ] Switch the game to a **fixed timestep**: accumulate `getDeltaTime()` and call `step` in constant chunks (e.g. 1/120s). The predictor uses the same constant. See Glenn Fiedler, "Fix Your Timestep". This is what makes the prediction match the real flight exactly.
-- [ ] Test: ship flies identically before and after the refactor. Gravity, boost, and thrust feel unchanged.
+- [x] Fixed timestep: `PhysicsWorld` accumulates frame time and steps Box2D in constant 1/60 s chunks, capped at 0.25 s per frame to avoid the spiral of death. The leftover fraction is `alpha`, and `InterpolatedBody` blends the last two transforms when drawing.
+- [x] Gravity is a pure function: `PlanetaryGravity.accelerationAt(point, out)` writes into a caller-supplied `Vector2` and touches no Box2D state.
+- [x] Planets are a collection (`Array<Planet>` in `GameWorld`), so more gravity sources are cheap to add.
+- [x] One fixed order per step, through the `StepListener` hooks: save transforms for interpolation → ship forces and gravity (`beforeStep`) → `world.step` → game rules (`afterStep`).
+- [x] Data and behavior split: Box2D bodies hold the state; `Ship` turns pilot intent into forces; `GameWorld` wires it together. `Main` only does lifecycle.
 
-Ownership after the refactor (dependencies point one way, from user to used):
+Ownership now:
 
 ```
-Main                 creates everything, wires it together, owns the fixed-timestep accumulator
-PhysicsWorld         has-a List<Planet>;  does step(PhysicsState, dt), gravityAt(...)
-Ship                 has-a PhysicsState;  delegates update to world.step
-TrajectoryPredictor  has-a PhysicsWorld, a scratch PhysicsState, a FloatArray of points
+Main             lifecycle: input → GameWorld → camera → renderers
+GameWorld        has-a PhysicsWorld, Array<Planet>, PlanetaryGravity, Ship; is the StepListener
+PhysicsWorld     owns the Box2D World and the fixed-timestep accumulator
+PlanetaryGravity accelerationAt(point, out) (pure) and applyTo(world) (forces)
+Ship             has-a Body; intent → forces; FlightState rules in afterStep
 ```
 
-### Predictor
+### Predictor (not started)
 
-- [ ] Add a `TrajectoryPredictor` class (separate responsibility from `Ship`). Constructed with a `PhysicsWorld` reference. Input: ship state. Output: a reused `FloatArray` of predicted x,y pairs.
-- [ ] Each frame: copy the ship's state into a scratch state, call `world.step` N times with the fixed dt, record position after each step. N ≈ seconds-ahead / dt (start with 5s).
-- [ ] Prediction assumes no player thrust. Include remaining solid boost, since that fires regardless of input.
-- [ ] Stop early when the predicted point hits a planet. First pass: distance to center < radius. Later: look up terrain height at the point's mil angle around the planet (Phase 4 reuses this for real collision).
+A Box2D `World` can't be cloned and stepped ahead without moving the real ship, so the predictor can't call `world.step`. Instead it integrates a scratch position and velocity itself, using the same pure force functions:
+
+- [ ] Add a `TrajectoryPredictor` class (separate responsibility from `Ship`). Input: ship position and velocity. Output: a reused `FloatArray` of predicted x,y pairs.
+- [ ] Each frame: copy the ship's position and velocity into scratch `Vector2`s, then for N steps of `PhysicsWorld.TIME_STEP`: `v += a·dt`, then `x += v·dt`. That is semi-implicit Euler, the same integrator Box2D uses, so with the same dt and the same forces the line matches the real flight. N ≈ seconds-ahead / dt (start with 5 s).
+- [ ] Acceleration comes from `PlanetaryGravity.accelerationAt` plus drag (once Phase 3 adds it, as a pure function too). Prediction assumes no player thrust; include remaining booster burn, since that fires regardless of input.
+- [ ] Stop early when the path hits terrain: `World.rayCast` between consecutive predicted points, against the terrain chain. That reuses the real collision shapes. Ignore the hull radius at first.
 - [ ] Draw the path with `ShapeRenderer` in a single `begin`/`end` block. Fade alpha along the line or dot every other segment.
 - [ ] Expose the predicted impact point (if any) for a future HUD marker.
 - [ ] Zero allocation per frame: no `new Vector2` / `new ArrayList` inside the loop. Verify with `Gdx.app.getJavaHeap()` on the debug HUD (flat, not sawtooth).
 - [ ] Measure cost with `System.nanoTime()` around the predict call; show rolling avg + max on debug HUD. Ignore the first few seconds (JIT warmup). Target: well under 1ms.
-- [ ] Test: with hands off the controls, does the ship follow the line exactly? Does the line update sensibly when rotating/thrusting?
+- [ ] Test: with hands off the controls, does the ship follow the line exactly? Does the line update sensibly when rotating/thrusting? A headless test in the style of `ShipFlightTest` can compare the prediction against real steps.
+- [ ] Known divergence: Box2D's solver also resolves contacts, and the line won't account for bounces. Only free flight has to match.
 
 ### Notes for drag (Phase 3)
 
-Drag depends on velocity, not position, and opposes it. With a large step it can overshoot and reverse velocity, causing jitter or instability. Keep the predictor's dt equal to the game's dt (a correctness requirement, not just accuracy), and clamp the per-step drag impulse so it never removes more speed than the ship has. The `density * speed` product computed for drag is also the input for heat buildup.
+Drag depends on velocity, not position, and opposes it. With a large step it can overshoot and reverse velocity, causing jitter or instability. Keep the predictor's dt equal to `PhysicsWorld.TIME_STEP` (a correctness requirement, not just accuracy), and clamp the per-step drag so it never removes more speed than the ship has (force × dt / mass ≤ speed). The `density * speed` product computed for drag is also the input for heat buildup.
 
-## Phase 4: Collision Detection
+## Phase 4: Collision Detection ✓ (via Box2D)
 
-- [ ] Implement collision detection between ship and terrain (per-planet local space)
-- [ ] Ship "crashes" (stops moving, simple visual feedback) on collision
-- [ ] Add collision bounds debug visualization
-- [ ] Detect when ship is "grounded" vs "flying"
-- [ ] Test: Does collision work at different angles? Any gaps or false positives?
+- [x] Implement collision detection between ship and terrain. Each planet is a static body with a terrain `ChainShape`; Box2D's continuous collision keeps the ship from tunneling. Filter bits in `CollisionCategory`, fixture roles in `FixtureRole`.
+- [x] Ship crashes on a bad touchdown: `CRASHED` state, red hull, reason shown on the HUD.
+- [x] Add collision bounds debug visualization (`DebugOverlay` with `Box2DDebugRenderer`, toggled with ')
+- [x] Detect when ship is "grounded" vs "flying" (`FlightState` `FLYING` / `LANDED` / `CRASHED`; `ShipContactListener` counts ground contacts and records the hardest hit, `Ship.afterStep` decides)
+- [x] Test: `ShipFlightTest` runs Box2D headlessly (gentle, fast and tilted touchdowns, resting without flicker, lift-off)
+- [ ] Hull is a single circle. Landing legs (−Y) as extra fixtures would make touchdown read better and let tilt matter more physically.
 
 ## Phase 5: Landing Success Criteria
 
-- [ ] Implement landing validation: check if ship is on flat zone, low velocity, near-vertical angle
+- [ ] Implement landing validation:
+    - [x] Low velocity (`MAX_LANDING_SPEED`, 10 m/s impact speed)
+    - [x] Near-vertical angle (`MAX_LANDING_TILT`, 15° from the planet's local up)
+    - [ ] On a flat landing zone. `judgeTouchdown` doesn't check this yet, so a gentle touchdown on rough terrain counts as landed. Use the touchdown point's angle around the planet against the `LandingZone` ranges.
 - [ ] Also check that ship isn't overheated
-- [ ] Add success/failure feedback (text display, color change, sound effect slot)
-- [ ] Add respawn/reset functionality after crash or successful landing
+- [ ] Add success/failure feedback (text display, color change, sound effect slot). Crash text and red hull exist; nothing celebrates a landing yet, and there's no sound slot.
+- [x] Add respawn/reset functionality after crash or successful landing (R → `GameWorld.requestRestart`, applied outside the step)
 - [ ] Track which planet you last landed on (for fuel station unlock)
 - [ ] Test: Can you reliably land? Is it too easy or too hard?
 
@@ -129,6 +139,8 @@ Drag depends on velocity, not position, and opposes it. With a large step it can
 
 ## Phase 8: Orbital Motion
 
+With Box2D, the planets switch from static to **kinematic** bodies, moved by setting their velocity each step (never `setTransform`, which teleports them and breaks contacts). `PlanetaryGravity` already reads `planet.getCenter()`, so that needs to track the body's position. A landed ship rides along through friction.
+
 - [ ] Calculate and apply orbital motion to both planetoids around barycenter
 - [ ] Start with slow, easily visible orbital speed
 - [ ] Update all rendering to account for moving planets
@@ -140,8 +152,8 @@ Drag depends on velocity, not position, and opposes it. With a large step it can
 
 ## Phase 9: Planetoid Rotation
 
-- [ ] Add rotation to each planetoid around its own center
-- [ ] Update collision detection to transform between world space and rotating local space
+- [ ] Add rotation to each planetoid around its own center (`setAngularVelocity` on the kinematic body)
+- [ ] Collision needs no manual world/local transform: the terrain chain is a fixture on the planet body, so Box2D rotates it. What does need updating is everything that assumes a fixed planet angle: landing-zone checks (use `Body.getLocalPoint` to get the touchdown angle in planet-local space), the `PlanetRenderer`, and landing speed (judge it relative to the ground's velocity, `Body.getLinearVelocityFromWorldPoint`).
 - [ ] This is where complexity spikes - expect bugs
 - [ ] Landing zones are now moving targets
 - [ ] Atmosphere rotates with the planet
@@ -243,12 +255,13 @@ DSE cuts rocks one pixel at a time, which points to the Noita-style approach: a 
 - [ ] F1: Toggle gravity on/off
 - [ ] F2: Toggle infinite fuel
 - [ ] F3: Toggle collision on/off
-- [ ] F4: Toggle debug overlays (vectors, bounds, zones)
+- [x] ' (apostrophe): Toggle debug overlay (Box2D shapes, fps, controller state). Velocity vectors and zones aren't drawn yet.
 - [ ] F4 (or separate key): Toggle trajectory prediction line
 - [ ] F5: Slow motion (0.25x speed)
 - [ ] F6: Teleport ship to planet 2
 - [ ] F7: Refill fuel
-- [ ] F8: Reset to starting position
+- [x] R: Reset to starting position (restart)
+- [x] L: Toggle camera follow; WASD pan and Z/X zoom in free camera
 - [ ] F9: Toggle heat damage on/off (invincibility)
 - [ ] F10: Clear heat meter (instant cooldown)
 - [ ] F11: Toggle atmosphere visualization
