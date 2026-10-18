@@ -38,9 +38,11 @@ Rebuilt on Box2D (2026-10): the ship is a dynamic body with a circular hull fixt
 Box2D's world gravity is zero. `PlanetaryGravity` applies Newtonian gravity toward every planet as a force before each step (`GameWorld.beforeStep`). Drag fits the same slot: a force applied before each step, computed from a pure function of position and velocity, which keeps it easy to unit-test. (The trajectory predictor stops at the atmosphere, so it never needs drag.) Don't use Box2D's `linearDamping`; it applies everywhere and ignores the atmosphere. Heat and overheat checks are game rules, so they go in `Ship.afterStep` and reuse `crash(reason)`.
 
 - [x] Implement gravity from both planetoids (inverse-square law, `PlanetaryGravity`; tested in `PlanetaryGravityTest`)
+- [x] Gravity plateau: below `Planet.GRAVITY_PLATEAU_RADIUS` (88.5 m) the pull holds at `SURFACE_GRAVITY` instead of growing, so descents don't feel like the planet suddenly grabs the ship. Above it, gravity stays inverse-square, so orbits above the plateau are still closed ellipses. Chosen over a lower falloff exponent, which would strengthen gravity far out and make orbits precess.
+- [ ] Derive the plateau radius instead of hard-coding 88.5: `LANDING_ZONE_RADIUS + GRAVITY_PLATEAU_FRACTION × (ATMOSPHERE_RADIUS − LANDING_ZONE_RADIUS)`, with the fraction at 0.5 (gives 88.5 today). Measured from the landing zones, the height `SURFACE_GRAVITY` describes. Prepares for per-planet sizes (Phase 11).
 - [x] Add fuel counter to HUD
 - [x] Thrust consumes fuel
-- [ ] Detect when ship enters atmosphere zone (distance check from planet center)
+- [x] Detect when ship enters atmosphere zone (`Planet.isInAtmosphere`, used by the camera and the HUD)
 - [ ] Apply atmospheric drag when in atmosphere (slows ship down)
 - [ ] Calculate heat buildup based on velocity and angle relative to direction of travel
 - [ ] Heat shield protection: reduce heat if ship's heat shield is facing the velocity vector
@@ -204,6 +206,15 @@ Builds on everything above. Each level adds one new skill on top of the last.
 - [ ] **Level 4: Landing clearance.** Before entering planet 2's atmosphere, the player must request landing clearance. Clearance requires a stable orbit: staying within a distance band around planet 2 (outside the atmosphere) for a set time. Entering the atmosphere without clearance fails the level, or at least warns.
     - Open questions: what counts as "an orbit" (time spent in the band, or a full 360° sweep around the planet)? Is clearance a key press or automatic once the orbit holds? Does clearance name a specific landing zone?
     - The trajectory predictor (Phase 3.5) would help the player see whether their orbit is closed.
+
+### Planets of different sizes
+
+- [ ] Let each planet have its own sizes and surface gravity, including two different planets in the same game. Today every size in `Planet` is `static`, so all planets share them.
+    - A `PlanetSpec` record (min/max terrain radius, landing-zone radius, atmosphere radius, surface gravity, plateau fraction) passed to the `Planet` constructor. `Planet` keeps instance fields and computes its own plateau radius from the formula in Phase 3.
+    - Few callers read the statics directly: `PlanetaryGravity` (plateau radius) and `PlanetRenderer` (atmosphere radius), plus the tests. `Terrain` already takes its radii through its constructor.
+    - Gravity: move the strength calculation into `Planet` (`planet.gravityAt(distance)`), so `PlanetaryGravity` only does direction and summing.
+    - `GameWorld` builds each planet from a spec; a level config (above) can carry the specs.
+    - Update the "terrain radius 60–78 m" notes in AGENTS.md and the flight manual.
 
 ### Alternative ship type (sketch)
 
