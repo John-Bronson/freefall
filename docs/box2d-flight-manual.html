@@ -779,7 +779,7 @@ body.<span class="hl">applyTorque</span>(body.getInertia() * angularAcceleration
       <p>So Freefall turns world gravity off…</p>
 <pre><code>world = <span class="k">new</span> World(<span class="k">new</span> Vector2(<span class="hl">0f, 0f</span>), <span class="k">true</span>);</code></pre>
       <p class="file">physics/PhysicsWorld constructor</p>
-      <p>…and applies its own inverse-square pull to <strong>every dynamic body</strong> before each step:</p>
+      <p>…and applies its own inverse-square pull, capped near the ground, to <strong>every dynamic body</strong> before each step:</p>
 <pre><code>world.getBodies(bodies);
 <span class="k">for</span> (Body body : bodies) {
     <span class="k">if</span> (body.getType() != BodyDef.BodyType.DynamicBody) <span class="k">continue</span>;
@@ -817,23 +817,38 @@ body.<span class="hl">applyTorque</span>(body.getInertia() * angularAcceleration
             <!-- thrust -->
             <line x1="306" y1="117" x2="360" y2="52" class="st-thrust" stroke-width="2.5" marker-end="url(#ah-t)"/>
             <text x="368" y="52" class="s-thrust" font-size="11">thrust along the nose (local +Y)</text>
-            <text x="228" y="170" class="s-soft" font-size="11">a = GM / d²  toward each center</text>
+            <text x="200" y="170" class="s-soft" font-size="11">a = GM / d²  toward each center (flat below 88.5 m)</text>
           </svg>
         </div>
         <figcaption>Fig. 4. Two gravity forces plus thrust, summed in the ship's force accumulator. Arrow lengths are illustrative.</figcaption>
       </figure>
 
+      <h3>The gravity plateau</h3>
+      <p>Pure inverse-square gravity more than doubles between the top of the atmosphere and the ground, so a descent feels like the planet suddenly grabs the ship. Freefall caps it instead: below <code>GRAVITY_PLATEAU_RADIUS</code> (88.5 m from the center, about halfway between the landing zones and the atmosphere edge) the pull stops growing and holds steady. Above it, gravity is ordinary inverse-square, so orbits that stay above the plateau are still true closed ellipses.</p>
+<pre><code><span class="k">float</span> distance = (<span class="k">float</span>) Math.sqrt(dx * dx + dy * dy);
+<span class="k">if</span> (distance == <span class="hl">0f</span>) <span class="k">continue</span>;                     <span class="c">// no direction from the center</span>
+
+<span class="k">float</span> pullDistance = Math.max(distance, <span class="hl">Planet.GRAVITY_PLATEAU_RADIUS</span>);
+<span class="k">float</span> magnitude = planet.getGravitationalParameter() / (pullDistance * pullDistance);
+out.add(dx / <span class="hl">distance</span> * magnitude, dy / <span class="hl">distance</span> * magnitude);</code></pre>
+      <p class="file">world/PlanetaryGravity.accelerationAt()</p>
+      <p>Two distances, two jobs. The <strong>clamped</strong> <code>pullDistance</code> sets only the strength. The <strong>real</strong> <code>distance</code> turns <code>(dx, dy)</code> into a unit vector, an arrow of length 1 that says only which way to pull. Dividing by the clamped value there would still point at the planet, but the arrow would be shorter than 1, so gravity would get <em>weaker</em> as the ship descends: about 14.2 instead of 18 m/s² at 70 m. <code>PlanetaryGravityTest.holdsSteadyBelowThePlateau</code> guards against that.</p>
+      <p>The plateau also replaces an older guard that clamped the distance to the lowest terrain. It keeps the pull finite near the center the same way. The explicit zero check is still needed, because 0 ÷ 0 in Java floats is <code>NaN</code>, not an exception, and a <code>NaN</code> spreads silently through every calculation it touches.</p>
+
       <h3>Tuning by surface gravity</h3>
-      <p>Newton's law needs a "GM" for each planet, which is hard to guess. Instead, each planet declares the gravity you feel standing on a landing zone, and GM is derived from that:</p>
-<pre><code><span class="k">public static final float</span> SURFACE_GRAVITY = <span class="hl">18f</span>;   <span class="c">// m/s² at landing-zone height</span>
+      <p>Newton's law needs a "GM" for each planet, which is hard to guess. Instead, each planet declares the gravity you feel near the ground, which is the plateau value, and GM is derived from that:</p>
+<pre><code><span class="k">public static final float</span> SURFACE_GRAVITY = <span class="hl">18f</span>;          <span class="c">// m/s² at and below the plateau</span>
+<span class="k">public static final float</span> GRAVITY_PLATEAU_RADIUS = <span class="hl">88.5f</span>;  <span class="c">// m from the center</span>
 
 <span class="k">public float</span> getGravitationalParameter() {
-    <span class="k">return</span> SURFACE_GRAVITY * LANDING_ZONE_RADIUS * LANDING_ZONE_RADIUS;
+    <span class="k">return</span> SURFACE_GRAVITY * GRAVITY_PLATEAU_RADIUS * GRAVITY_PLATEAU_RADIUS;
 }</code></pre>
       <p class="file">world/Planet.java</p>
+      <p>Anchoring GM at the plateau radius makes the two pieces meet exactly there, with no jump in the pull. Two independent dials: <code>SURFACE_GRAVITY</code> sets how heavy landing feels, <code>GRAVITY_PLATEAU_RADIUS</code> sets how high the flat zone reaches. Raising either makes the pull stronger everywhere above the plateau too.</p>
       <div class="calc">
-        <div><span class="lbl">At a landing zone</span><span class="val">18.0 <small>m/s²</small></span><span class="note">d = 69 m, by definition</span></div>
-        <div><span class="lbl">Halfway out</span><span class="val">3.8 <small>m/s²</small></span><span class="note">d = 150 m</span></div>
+        <div><span class="lbl">At a landing zone</span><span class="val">18.0 <small>m/s²</small></span><span class="note">d = 69 m, on the plateau</span></div>
+        <div><span class="lbl">Atmosphere edge</span><span class="val">12.1 <small>m/s²</small></span><span class="note">d = 108 m</span></div>
+        <div><span class="lbl">Approach</span><span class="val">6.3 <small>m/s²</small></span><span class="note">d = 150 m</span></div>
         <div><span class="lbl">Main engine</span><span class="val">25.0 <small>m/s²</small></span><span class="note">thrust-to-weight ≈ 1.4 on the pad</span></div>
       </div>
       <p>That last comparison is a gameplay dial. Takeoff is possible but sluggish. Raising thrust or lowering surface gravity changes how the game feels.</p>

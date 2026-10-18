@@ -8,6 +8,9 @@ import com.badlogic.gdx.utils.Array;
 
 /**
  * Newtonian gravity toward every planet, applied as a force on every dynamic body.
+ * Close to a planet the pull is capped: below {@link Planet#GRAVITY_PLATEAU_RADIUS} it
+ * stays at {@link Planet#SURFACE_GRAVITY} instead of growing, so a descent doesn't feel
+ * like the planet suddenly grabs the ship.
  *
  * <p>Box2D's built-in gravity is one fixed vector for the whole world, which suits a
  * platformer. Here "down" depends on where you are, so the world's gravity is zero and
@@ -35,14 +38,17 @@ public final class PlanetaryGravity {
         for (Planet planet : planets) {
             float dx = planet.getCenter().x - point.x;
             float dy = planet.getCenter().y - point.y;
-            // Don't let the distance fall below the planet's lowest terrain. Nothing
-            // solid can get that close, and it keeps a = GM / r² finite if something
-            // ever ends up at the center.
-            float distanceSquared = Math.max(dx * dx + dy * dy,
-                Planet.MIN_TERRAIN_RADIUS * Planet.MIN_TERRAIN_RADIUS);
-            float distance = (float) Math.sqrt(distanceSquared);
+            float distance = (float) Math.sqrt(dx * dx + dy * dy);
 
-            float magnitude = planet.getGravitationalParameter() / distanceSquared;
+            // Skip the planet if the distance is 0 to avoid potentially dividing by zero later
+            if (distance == 0f) {
+                continue;
+            }
+
+            // Clamp only the distance used for strength, so gravity stays flat below the plateau. The direction must
+            // still use the real distance, or the unit vector shrinks and gravity weakens near the ground.
+            float pullDistance = Math.max(distance, Planet.GRAVITY_PLATEAU_RADIUS);
+            float magnitude = planet.getGravitationalParameter() / (pullDistance * pullDistance);
             out.add(dx / distance * magnitude, dy / distance * magnitude);
         }
         return out;

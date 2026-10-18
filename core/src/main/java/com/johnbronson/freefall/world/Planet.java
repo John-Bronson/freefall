@@ -24,8 +24,17 @@ public final class Planet {
     public static final float LANDING_ZONE_RADIUS = 69f;
     public static final float ATMOSPHERE_RADIUS = 108f;
 
-    /** Gravitational acceleration at landing-zone height, in m/s². */
+    /**
+     * Gravitational acceleration at and below {@link #GRAVITY_PLATEAU_RADIUS}, so everywhere
+     * near the ground, in m/s².
+     */
     public static final float SURFACE_GRAVITY = 18f;
+
+    /**
+     * Below this distance from the center, gravity stops increasing and holds at
+     * {@link #SURFACE_GRAVITY}. Above it, gravity falls off with the square of the distance.
+     */
+    public static final float GRAVITY_PLATEAU_RADIUS = 88.5f;
 
     /** Rock is grippy. Box2D mixes two fixtures' friction as sqrt(a * b). */
     private static final float TERRAIN_FRICTION = 0.8f;
@@ -91,10 +100,11 @@ public final class Planet {
 
     /**
      * The "GM" in Newton's a = GM / r². Working back from the surface gravity makes
-     * gravity easy to tune: a = SURFACE_GRAVITY exactly at landing-zone height.
+     * gravity easy to tune: a = {@link #SURFACE_GRAVITY} exactly at
+     * {@link #GRAVITY_PLATEAU_RADIUS}, where the inverse-square curve meets the plateau.
      */
     public float getGravitationalParameter() {
-        return SURFACE_GRAVITY * LANDING_ZONE_RADIUS * LANDING_ZONE_RADIUS;
+        return SURFACE_GRAVITY * GRAVITY_PLATEAU_RADIUS * GRAVITY_PLATEAU_RADIUS;
     }
 
     /** Angle from the planet's center to the middle of a landing zone, in radians. */
