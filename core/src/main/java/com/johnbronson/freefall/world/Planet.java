@@ -36,6 +36,19 @@ public final class Planet {
      */
     public static final float GRAVITY_PLATEAU_RADIUS = 88.5f;
 
+    /**
+     * Air density at and below the landing zones.
+     * A relative scale: 1 is the reference atmosphere that ship drag is tuned against.
+     * Raise it for a thicker atmosphere, lower it for a thinner one.
+     */
+    public static final float SURFACE_AIR_DENSITY = 1f;
+
+    /**
+     * Shape of the air density curve. 1 = linear. Higher values keep the upper air thin
+     * for longer, then thicken it quickly near the surface.
+     */
+    public static final float AIR_DENSITY_FALLOFF_EXPONENT = 1f;
+
     /** Rock is grippy. Box2D mixes two fixtures' friction as sqrt(a * b). */
     private static final float TERRAIN_FRICTION = 0.8f;
 
@@ -124,6 +137,17 @@ public final class Planet {
     /** True if {@code worldPoint} is inside the planet's atmosphere */
     public boolean isInAtmosphere(Vector2 worldPoint) {
         return getCenter().dst(worldPoint) < ATMOSPHERE_RADIUS;
+    }
+
+    /**
+     * Relative air density at {@code worldPoint}: 0 outside the atmosphere, rising to
+     * {@link #SURFACE_AIR_DENSITY} at the landing zones.
+     */
+    public float airDensityAt(Vector2 worldPoint) {
+        float distance = center.dst(worldPoint);
+        float t = (ATMOSPHERE_RADIUS - distance) / (ATMOSPHERE_RADIUS - LANDING_ZONE_RADIUS);
+        t = MathUtils.clamp(t, 0f, 1f);
+        return SURFACE_AIR_DENSITY * (float) Math.pow(t, AIR_DENSITY_FALLOFF_EXPONENT);
     }
 
     /** Height of {@code worldPoint} above the terrain directly below it, in meters. */
