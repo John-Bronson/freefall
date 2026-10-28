@@ -79,6 +79,12 @@ Ship             has-a Body; intent → forces; FlightState rules in afterStep
 
 A space-only coast line. Decided 2026-10-17:
 
+- [ ] Add a `TrajectoryPredictor` class (separate responsibility from `Ship`). Constructed with a `PhysicsWorld` reference. Input: ship state. Output: a reused `FloatArray` of predicted x,y pairs.
+- [ ] Each frame: copy the ship's state into a scratch state, call `world.step` N times with the fixed dt, record position after each step. N ≈ seconds-ahead / dt (start with 5s).
+- [ ] Prediction assumes no player thrust. Include remaining solid boost, since that fires regardless of input.
+- [ ] Stop early when the predicted point hits a planet. First pass: distance to center < radius. Later: look up terrain height at the point's mil angle around the planet (Phase 4 reuses this for real collision).
+- [ ] Draw the path with `ShapeRenderer` in a single `begin`/`end` block, **inside the low-res framebuffer** (it's part of the world, so it sits on the same pixel grid as everything else). Fade alpha along the line or dot every other segment.
+- [ ] Expose the predicted impact point (if any) for a future HUD marker.
 - **In an atmosphere: draw nothing.** Close to the ground the player flies by eye.
 - **In space: draw until the path either covers a set distance or touches an atmosphere.**
 
@@ -126,21 +132,22 @@ Drag depends on velocity, not position, and opposes it. With a large step it can
 - [ ] Track which planet you last landed on (for fuel station unlock)
 - [ ] Test: Can you reliably land? Is it too easy or too hard?
 
-## Phase 6: Smooth Zoom
+## Phase 6: Discrete Zoom Levels
 
-- [ ] Implement continuous zoom based on distance to nearest planet
-- [ ] Define min/max zoom levels (e.g., zoomed out for traveling between planets, zoomed in for landing)
-- [ ] Smooth zoom interpolation using lerp or similar easing function
-- [ ] Calculate target zoom level based on distance to nearest planet (closer = more zoomed in)
-- [ ] Add smooth transition speed parameter to control how quickly zoom responds
-- [ ] Consider using a non-linear curve (exponential/logarithmic) for more natural feel
-- [ ] Ensure HUD elements remain visible/scaled appropriately across all zoom levels
-- [ ] Optional: Add minimum zoom change threshold to prevent micro-adjustments
-- [ ] Test: Does the zoom transition feel smooth? Is it responsive but not jarring? Does it help or hinder gameplay?
+Smooth (fractional) zoom is out: it breaks the "no fractional scale" rule in `docs/PIXEL_RENDERING.md`. The world camera's `zoom` stays 1. Zooming instead switches between a few fixed pixels-per-metre (`PPM`) levels, and each level sits on a crisp grid of its own. This replaces the zoom lerp that `CameraController` does today (1 ↔ 4).
+
+- [ ] Define the levels as `PPM` values in `render/`, e.g. approach 8 px/m (80×60 m view), mid 4 px/m (160×120 m), cruise 2 px/m (320×240 m). Tune by playing.
+- [ ] Pick the level from distance to the nearest planet, with **hysteresis** (zoom in at a smaller distance than you zoom out) so it doesn't flip back and forth at a boundary
+- [ ] Switch levels with a hard cut first. If it feels jarring, try a short dissolve between the two framebuffer images. Never tween the scale.
+- [ ] Bake each planet's texture once **per level** from the same `Terrain` radii (one cell = one virtual pixel at that level). Don't minify the 8 px/m texture at runtime.
+- [ ] Below some level the ship gets too small to read (6 px at 2 px/m). Swap it for a marker sprite drawn at native size.
+- [ ] Free-camera Z/X steps through the levels instead of ±0.1 zoom
+- [ ] HUD is unaffected (window resolution, drawn after the blit)
+- [ ] Test: Are the cuts readable, or disorienting? Do the thresholds trigger where you want them? Does landing happen fully at the closest level?
 
 ## Phase 7: Space Station Docking & Basic Audio
 
-- [ ] Add collision detection for docking with station orbiting planet 1 (one tagged fixture per docking bay; see "Art Direction: Chunky Pixel Rendering")
+- [ ] Add collision detection for docking with station orbiting planet 1 (one tagged fixture per docking bay; see "Art Direction: Pixel Rendering")
 - [ ] Implement docking criteria - must match station's velocity (or get close enough) plus low relative velocity and proximity
 - [ ] Docking refills fuel AND repairs heat damage/cools ship
 - [ ] Add visual feedback for successful dock
@@ -170,11 +177,12 @@ With Box2D, the planets switch from static to **kinematic** bodies, moved by set
 - [ ] This is where complexity spikes - expect bugs
 - [ ] Landing zones are now moving targets
 - [ ] Atmosphere rotates with the planet
+- [ ] Planet textures rotate at runtime with nearest sampling through the framebuffer, the same as the ship. Expect the same edge shimmer, and keep 1 px surface details to a minimum.
 - [ ] Test: Can you still land? Is rotation speed balanced with gameplay?
 
 ## Phase 9.5: Space Station
 
-- [ ] Position space station sprite in orbit around planet 1 (drawn through the low-res framebuffer; see "Art Direction: Chunky Pixel Rendering")
+- [ ] Position space station sprite in orbit around planet 1 (drawn through the low-res framebuffer, art facing up, 2 px outlines; see "Art Direction: Pixel Rendering")
 - [ ] Station orbits with the moving/rotating planet system
 - [ ] Test: Does the station move consistently with the rest of the world?
 
@@ -186,8 +194,8 @@ With Box2D, the planets switch from static to **kinematic** bodies, moved by set
     - [ ] Tension music: More intense when near planet/in atmosphere/low fuel
     - [ ] Landed music: Quiet/ambient when safely landed
 - [ ] Add sound effects: thrust, atmospheric whoosh, heat warning beeps, landing/crash, docking
-- [ ] Add particle effects (heat glow when entering atmosphere, burn marks, exhaust trails)
-- [ ] UI improvements (better heat/fuel gauges, prettier HUD)
+- [ ] Add particle effects (heat glow when entering atmosphere, burn marks, exhaust trails). Draw them inside the framebuffer at virtual-pixel size (1 px particles, integer positions). High-res particles break the look. Alpha/additive glow is allowed.
+- [ ] UI improvements (better heat/fuel gauges, prettier HUD). HUD stays crisp at window resolution.
 - [ ] Balance fuel consumption, gravity strength, orbital/rotation speeds, atmospheric drag, heat buildup rates
 - [ ] Tune heat shield effectiveness angle (how precise do you need to be?)
 - [ ] Add win condition (land on planet 2 after starting on planet 1)
@@ -225,31 +233,53 @@ Builds on everything above. Each level adds one new skill on top of the last.
     - Gameplay questions: how does it take off without boosters (runway roll on a landing zone? a launch from the station?) and is it a level of its own or a player choice?
 
 ## Art Direction: Chunky Pixel Rendering (design notes, 2026-10-10, updated 2026-10-11)
+## Art Direction: Pixel Rendering (design notes, 2026-10-10, updated 2026-10-16)
 
-Strategy agreed in discussion; nothing here is implemented yet. Visual references: *Deep Space Exploitation* (procedural, noise-filled rocks drawn in chunky screen-aligned pixels, even when rotated) and *Teleglitch* (tiny, abstract sprites rotating freely on a very coarse grid).
+**The rendering rules live in [`docs/PIXEL_RENDERING.md`](docs/PIXEL_RENDERING.md). Read it before touching rendering, camera, sprite, or asset code.** This section covers how those rules apply to Freefall, where Freefall deliberately differs, and the steps to get there. None of it is implemented yet. `docs/rotation_demo.py` previews a sprite at every angle offline. (The doc refers to it as `tools/rotation_demo.py`.)
 
-### Decisions
+Visual references: *Subspace / Continuum* for the pixel grid and runtime rotation, *Deep Space Exploitation* for procedural, noise-filled rocks in chunky screen-aligned pixels, *Teleglitch* for tiny abstract sprites rotating on a coarse grid.
+
+### The rules, applied to Freefall
+
+- **Native-resolution framebuffer.** The whole world renders into a `FrameBuffer` at `VIRTUAL_W × VIRTUAL_H` = **640×480**. Both numbers are even, and 4:3 matches the 80×60 m view at 8 px/m. The buffer is then drawn to the window at an **integer** scale, `floor(min(backBufferW / 640, backBufferH / 480))`, with `Nearest` filtering and black bars for the leftover space. Use the back-buffer size (`getBackBufferWidth/Height`), not `getWidth/Height`, which are wrong on HiDPI. The doc's reference `PixelScreen` class is the template.
+  - The window is 640×480 today (`Lwjgl3Launcher`), which is 1:1 and not chunky. Default to 2× (1280×960). 3× (1920×1440) exactly fills the height of the 3440×1440 dev monitor.
+  - Gotchas: the framebuffer's colour texture comes out upside down (`flip(false, true)` on its region), and `fbo.end()` restores the window viewport.
+- **No `Viewport` classes on the world camera.** `WorldRenderer`'s `ExtendViewport` goes away, because `PixelScreen` owns all scaling. The world camera is a plain `OrthographicCamera` in virtual pixels with `zoom == 1`, always. (Zoom is handled in Phase 6.)
+- **Meters stay meters.** `world/` and `physics/` don't change. Meters become pixels (`× PPM`, then `MathUtils.round`) only in the draw code and the camera position, all inside `render/`. `PPM` and `VIRTUAL_W/H` live in `render/` too. The doc keeps them in a class called `Constants`, which Freefall doesn't have, so pick a home in `render/`.
+- **Snap the draw, never the physics.** Round each sprite's position and the camera position to whole virtual pixels, after the `InterpolatedBody` interpolation. The follow camera centres exactly on the ship, so both round to the same pixel and the ship doesn't jitter on screen. If camera lag or look-ahead is added later, expect a 1 px wobble.
+- **Continuous rotation, nearest-sampled.** Each frame, sprites rotate to the body's exact angle. No quantized headings, no pre-rendered rotation frames. The crunchy, shimmering edges at off-axis angles are the intended look, not a bug. Set `HEADING_SNAP_DEG = 0`; changing it to 9 gives Subspace-style 40 steps as a one-line toggle in the draw code.
+- **No fractional scale anywhere**: camera zoom 1, sprite scale 1, integer window scale.
+- **Everything in the world goes in the buffer**: planets, atmosphere, landing-zone stripes, ship, thrust flame, particles, station, trajectory line. Mixing resolutions breaks the look.
+- **HUD: crisp, at window resolution**, drawn after the blit. This is decided, and it's what `Hud` already does with its `ScreenViewport`.
+- **The debug overlay is exempt.** `DebugOverlay` (Box2D debug renderer, velocity vector, text) is a dev tool and draws after the blit at window resolution. Its meters camera must use the world camera's rounded position and the same on-screen rectangle (the window minus the black bars), or the outlines won't line up with the sprites.
+- **All textures use `Nearest`/`Nearest`**, with no mipmaps. Atlas settings: `filterMin/filterMag: Nearest`, `paddingX/Y: 2`.
+
+### Where Freefall differs from PIXEL_RENDERING.md (decided 2026-10-16)
+
+The doc was written for Subspace-style combat. Freefall is a lander, so:
+
+- **The ship sprite cell is 24×24 px, not 36×36.** At 8 px/m that's a 3 m cell, so the ship grows from 1.2 m to about 2.5–2.75 m across: a hull of roughly 20–22 px inside a 1–2 px transparent margin. That's enough room for 2 px outlines that survive rotation, without the full 36 px retune. The 12×12 `assets/ship_draft.pxo` needs redrawing at 24×24 at native size. Resize the canvas; don't scale the art up.
+- **Art faces up (+Y), not +x.** Ship local +Y is the nose, so the sprite is drawn with `body.getAngle()` converted to degrees and **no** `−90` offset. Every Freefall atlas uses the same convention: art points up.
+- **Lander physics stays.** The doc's Box2D section (instant turning with `setAngularVelocity`, a `MAX_SPEED` clamp) describes how Subspace feels to fly, and Freefall doesn't adopt it. Turning keeps its capped torque, and gravity and drag govern speed. The ship's circle hull already matches the doc.
+- **Zoom means switching between discrete `PPM` levels** with the same 640×480 buffer, not switching to a different `PixelScreen` resolution. Camera zoom stays 1 at every level. See Phase 6.
+
+### Other decisions
 
 - **No destruction in Freefall.** Planet and station shapes are fixed once generated, so physics stays as it is (Box2D bodies, terrain `ChainShape` from the seeded radii). The art is generated once and never rebuilt at runtime.
-- **The chunky look comes from a low-res framebuffer**, not from the assets: render the world into a small `FrameBuffer` with `Nearest` filtering, then draw it to the screen at an integer scale. Anything rotated is re-rasterized onto the coarse screen grid, which is why DSE's edges stay screen-aligned on rotated rocks. The HUD is drawn separately.
-  - **Starting size: 640×480.** It is 4:3, matching the 80×60 m minimum view, so it gives 8 px per metre at zoom 1.
-  - The window is currently 640×480 too (`Lwjgl3Launcher`), which would be 1:1 and not chunky. Show it at 2× (1280×960) or 3× (1920×1440, exactly the height of the 3440×1440 dev monitor; pillarboxed if fullscreen).
-  - Gotchas: the framebuffer's colour texture comes out vertically flipped, and the viewport must be applied against the framebuffer's size (not the window's) while drawing into it.
-- **Target is the modern Teleglitch/DSE look, not an authentic 1993 VGA game.** That means:
-  - Free rotation through the framebuffer; no pre-baked facings.
+- **Target is the modern look, not an authentic 1993 VGA game.** That means:
   - No palette-index shader and no palette cycling. Assets are ordinary RGBA PNGs.
-  - The palette is a style discipline enforced at authoring time: draw in indexed colour mode with one shared palette file kept in the repo. Aim for 16–32 colours built as a few ramps, not 256. Optional: a JUnit test that loads each PNG as a `Pixmap` and asserts every opaque pixel is in the palette.
+  - The palette is a style discipline enforced while drawing: work in indexed colour mode with one shared palette file kept in the repo. Aim for 16–32 colours built as a few ramps, not 256. Optional: a JUnit test that loads each PNG as a `Pixmap` and asserts every opaque pixel is in the palette.
   - Effects may leave the palette (alpha, tinting, additive glow for re-entry heat and thruster flame).
-- **Ship sprite starts at 12×12 px**, drawn at 8 px per metre to match the current 1.5 m tall, 1.2 m wide ship. Expect an icon: silhouette, a differently coloured nose for the heat shield, leg stubs, 3–4 colours. No 1 px details that must survive rotation (they drop out under `Nearest`).
-  - The sprite's resolution must match its drawn size at the closest zoom. Larger wastes detail and shimmers; smaller turns texels into fat rotated squares.
-  - At cruise zoom (4×) the ship is about 3 px; swap it for a simple marker at that distance if needed.
+- **Asset rules** (from the doc): 2 px outlines on anything that must stay readable while rotating; 1 px only where shimmer is wanted. No 1 px details that must survive rotation. Shading should be flat and mostly symmetric, because baked-in light rotates with the hull. No anti-aliasing in the source art. Author at native size, never draw large and downscale. Sprite cells keep a transparent margin so the hull never touches the edge.
 - **Art tool: Pixelorama** (free, open source; Flatpak `com.orama_interactive.Pixelorama`, hidden in Mint's Software Manager because the Flathub listing is unverified, though it is the developer's own package). Indexed mode exists since v1.1. Keep the `.pxo` project files in git alongside the exported PNGs. Aseprite (~$20) is the upgrade if the tooling becomes limiting.
-- **Planet art is a cell grid baked to a texture, once per planet:**
-  - Shape mask comes from the same `Terrain` radii the chain shape uses (cell is solid if its distance from the centre is less than the terrain radius at its angle), so art and collision cannot drift apart.
+- **Planet art is a cell grid baked to a texture, once per planet per zoom level:**
+  - **One cell = one virtual pixel** at that level: 1/8 m at 8 px/m, so the 156 m planet is about 1248 px wide and needs a 2048 texture. That's about 624 px at 4 px/m and about 312 px at 2 px/m.
+  - The shape mask comes from the same `Terrain` radii the chain shape uses (a cell is solid if its distance from the centre is less than the terrain radius at its angle), so art and collision cannot drift apart.
   - Colour comes from fractal noise (several octaves of simplex/Perlin) quantized into 3–4 palette bands, with per-cell random jitter before quantizing to get speckled band edges.
   - Landing-zone stripes are painted into the same grid.
-  - Seeded like the terrain. LibGDX has no noise built in; FastNoiseLite (single Java file) is one option. Write into a `Pixmap`, upload as a `Texture`.
-- **Ship and station are ordinary sprites** drawn through the same framebuffer. Their physics stays polygon fixtures; no per-pixel collision.
+  - Seeded like the terrain. LibGDX has no noise built in; FastNoiseLite (single Java file) is one option. Write into a `Pixmap`, upload as a `Texture` (Nearest).
+  - The planet's draw position is rounded to whole pixels like everything else. Once planets rotate (Phase 9), the texture rotates with nearest sampling, the same as the ship.
+- **Ship and station are ordinary sprites** drawn through the same framebuffer. Their physics stays polygon/circle fixtures; no per-pixel collision.
 - **Station docking bays are identified by fixture, not by pixel lookup:**
   - Hull is a set of polygon fixtures on one body (kinematic once it orbits in Phase 8).
   - Each docking bay is a "garage": solid walls (part of the hull fixtures) around a square interior, with a door across the opening.
@@ -261,25 +291,25 @@ Strategy agreed in discussion; nothing here is implemented yet. Visual reference
   - The contact listener only records sensor begin/end; the rules above run after the step, same pattern as `ShipContactListener` → `Ship.afterStep`.
   - If the exact touch point is ever needed: take the contact's world manifold point and convert with `Body.getLocalPoint`.
   - Alternative considered: a second "ID mask" image aligned with the station art, looked up at the contact point. Worth it only if there are many irregular regions; overkill for a few bays.
-- All of this lives in `render/` except the docking-bay fixtures (`world/`).
+  - Station bays must be sized for the ~2.5 m ship.
+- All of this lives in `render/` except the docking-bay fixtures and the ship hull retune (`world/`).
 
 ### Open decisions
 
-- **Cell size in metres.** Drives everything. Planet terrain is up to 156 m across: 0.25 m/cell is about 624 cells (fits a 1024 texture), 0.5 m/cell about 312. Pick it from how many pixels wide the ship should be on screen. With the 640×480 framebuffer at 8 px/m, a 1:1 match is 0.125 m/cell, about 1248 cells, which needs a 2048 texture; 0.25 m/cell gives 2×2 framebuffer pixels per cell at zoom 1.
-- **Is a 12 px ship enough?** Decide by looking at it rotating through the framebuffer. If it needs to be bigger, the options are:
-  - Approach zoom of 0.75 (45 m view): about 16 px.
-  - Double the ship to 3 m (retune `HULL_RADIUS`, mass, thrust): about 24 px. Both together: about 32 px.
-  - Two-stage zoom: ease in further only when the ship is slow and close to the ground.
-  - Zooming in alone cannot reach 32 px at 1.5 m: the view would be 22.5 m tall, narrower than a landing zone (about 27 m), and crossed in about 2 s at the 10 m/s landing limit.
-  - Upper bound: keep the ship to roughly 8–15% of the framebuffer height when landing, so the terrain ahead stays visible.
-- **Zoom.** Smooth zoom (Phase 6) makes art texels shimmer as the texel-to-screen-pixel ratio passes through non-integers. Options: snap zoom to integer steps, or accept it (rotation already resamples every frame, so it may be tolerable). Decide by trying it.
+- **Zoom level values and thresholds.** A starting point is 8 / 4 / 2 px/m. Both planets fit in one view only at 1 px/m (640 m wide); decide whether that's needed or whether a radar does the job.
+- **Transition between zoom levels:** hard cut or a short dissolve. Never a scale tween.
+- **Final check of the 24 px ship.** Preview it with `docs/rotation_demo.py` (set `S = 24` and load the PNG), then in game at ~27° and ~45°. If it's still too small, the options are a bigger cell (32/36 px, a ~4 m ship) or a closer landing level (e.g. 12 px/m); check the second against the ~27 m landing-zone width.
 
-### Suggested order
+### Implementation steps
 
-1. Low-res framebuffer with the current renderers (small change, most of the look).
-2. Noise-filled planet textures in `PlanetRenderer`.
-3. Ship sprite.
-4. Station sprite and docking-bay fixtures (with Phase 7 / 9.5).
+- [ ] **Framebuffer.** Add a `PixelScreen`-style class in `render/` and route the current renderers through it. Drop `ExtendViewport`. Set the window to 2×. The existing `ShapeRenderer` drawing can keep working in metres by giving it the world camera's matrix scaled by `PPM`. It gets rasterized onto the coarse grid either way.
+- [ ] **Check it** against the doc's review checklist: screenshot at ~27° and ~45°; ship and background pixels are the same size on the same grid, with hard edges.
+- [ ] **Retune the ship to ~2.5 m**: `HULL_RADIUS`, mass, thrust, turn acceleration, spawn offset, landing speed/angle thresholds. Update `docs/box2d-flight-manual.html` to match.
+- [ ] **Ship sprite**: redraw at 24×24 facing up, export as a PNG, load with `Nearest`, and draw it from `ShipRenderer` (centre origin, rounded position, scale 1).
+- [ ] **Noise-filled planet textures** in `PlanetRenderer` (8 px/m level first).
+- [ ] **Discrete zoom levels** (Phase 6), with per-level planet bakes and the cruise-level ship marker.
+- [ ] **Station sprite and docking-bay fixtures** (with Phase 7 / 9.5).
+- [ ] **Update `AGENTS.md`** once the framebuffer lands: the camera now works in virtual pixels, `PPM` lives only in `render/`, and the `ExtendViewport` mention goes.
 
 ### If destruction is ever revisited
 
