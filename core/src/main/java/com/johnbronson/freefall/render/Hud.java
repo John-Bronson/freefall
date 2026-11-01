@@ -2,6 +2,8 @@ package com.johnbronson.freefall.render;
 
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Align;
@@ -19,10 +21,13 @@ public final class Hud implements Disposable {
 
     private static final float MARGIN = 16f;
     private static final float LINE_HEIGHT = 20f;
+    private static final float DIAL_RADIUS = 30f;
+    private static final float DOT_RADIUS = 3f;
 
     private final ScreenViewport viewport = new ScreenViewport();
     private final BitmapFont font = new BitmapFont();
     private final SpriteBatch batch;
+    private final ShapeRenderer shapeRenderer = new ShapeRenderer();
 
     public Hud(SpriteBatch batch) {
         this.batch = batch;
@@ -61,6 +66,10 @@ public final class Hud implements Disposable {
         }
 
         batch.end();
+
+        shapeRenderer.setProjectionMatrix(viewport.getCamera().combined);
+        drawHeadingDial(angle);
+
     }
 
     /** Draws one right-aligned line and returns the y for the next one. */
@@ -69,8 +78,27 @@ public final class Hud implements Disposable {
         return y - LINE_HEIGHT;
     }
 
+    private void drawHeadingDial(float angle) {
+        float centerX = viewport.getWorldWidth() - MARGIN - DIAL_RADIUS;
+        float centerY = MARGIN + DIAL_RADIUS;
+        float noseX = -MathUtils.sin(angle);
+        float noseY = MathUtils.cos(angle);
+
+        shapeRenderer.begin(ShapeType.Line);
+
+        shapeRenderer.circle(centerX, centerY, DIAL_RADIUS, 32);
+        shapeRenderer.line(centerX, centerY, (centerX + noseX * DIAL_RADIUS), (centerY + noseY * DIAL_RADIUS));
+
+        shapeRenderer.end();
+
+        shapeRenderer.begin(ShapeType.Filled);
+        shapeRenderer.circle(centerX, centerY, DOT_RADIUS);
+        shapeRenderer.end();
+    }
+
     @Override
     public void dispose() {
+        shapeRenderer.dispose();
         font.dispose();
     }
 }
