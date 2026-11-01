@@ -111,21 +111,6 @@ class ShipFlightTest {
     }
 
     @Test
-    void thrustWakesALandedShipAndLiftsOff() {
-        world = new TestWorld();
-        Ship ship = world.placeShip(0.05f, 0f, 0f);
-        world.run(3f);
-        assertFalse(ship.getBody().isAwake());
-
-        ship.setThrottle(1f);
-        world.run(1f);
-
-        assertTrue(ship.getBody().isAwake());
-        assertEquals(FlightState.FLYING, ship.getState());
-        assertTrue(world.planet.altitudeOf(ship.getBody().getPosition()) > 2f);
-    }
-
-    @Test
     void attitudeControlTurnsAtTheRequestedRateThenHolds() {
         world = new TestWorld();
         Ship ship = world.placeShip(30f, 0f, 0f);

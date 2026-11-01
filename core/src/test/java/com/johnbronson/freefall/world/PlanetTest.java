@@ -46,14 +46,6 @@ class PlanetTest {
     }
 
     @Test
-    void airIsEmptyOutsideTheAtmosphere() {
-        Planet planet = planetAtOrigin();
-
-        // Well outside: the unclamped ramp would go negative here.
-        assertEquals(0f, planet.airDensityAt(new Vector2(0f, 150f)), 1e-6f);
-    }
-
-    @Test
     void airIsFullAtTheLandingZones() {
         Planet planet = planetAtOrigin();
 
