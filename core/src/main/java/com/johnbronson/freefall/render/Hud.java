@@ -58,7 +58,7 @@ public final class Hud implements Disposable {
         y = line(String.format("Speed %.1f m/s", ship.getBody().getLinearVelocity().len()), y);
         y = line(String.format("Altitude %.1f m", altitude), y);
         y = line(inAtmosphere ? "In Atmo" : "In Vacuum", y);
-        y = line(String.format("Heading: %2f rad %.0f deg", angle, angleInDegrees), y);
+        y = line(String.format("Heading: %.0f deg", angleInDegrees), y);
 
         if (ship.getState() == Ship.FlightState.CRASHED) {
             y = line(ship.getCrashReason(), y);
