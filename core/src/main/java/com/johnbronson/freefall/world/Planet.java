@@ -19,16 +19,16 @@ import com.johnbronson.freefall.physics.FixtureRole;
 public final class Planet {
 
     // All sizes are meters from the planet's center.
-    public static final float MIN_TERRAIN_RADIUS = 60f;
-    public static final float MAX_TERRAIN_RADIUS = 78f;
-    public static final float LANDING_ZONE_RADIUS = 69f;
-    public static final float ATMOSPHERE_RADIUS = 108f;
+    public static final float MIN_TERRAIN_RADIUS = 120f;
+    public static final float MAX_TERRAIN_RADIUS = 160f;
+    public static final float LANDING_ZONE_RADIUS = 140f;
+    public static final float ATMOSPHERE_RADIUS = 220f;
 
     /**
      * Gravitational acceleration at and below {@link #GRAVITY_PLATEAU_RADIUS}, so everywhere
      * near the ground, in m/s².
      */
-    public static final float SURFACE_GRAVITY = 18f;
+    public static final float SURFACE_GRAVITY = 22f;
 
     /**
      * Where the plateau sits between the landing zones (0) and the top of the atmosphere (1).

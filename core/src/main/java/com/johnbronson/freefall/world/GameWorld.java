@@ -17,7 +17,7 @@ import com.johnbronson.freefall.physics.StepListener;
 public final class GameWorld implements StepListener, Disposable {
 
     /** The barycenter is the world origin. The planets sit on either side of it. */
-    private static final float PLANET_DISTANCE_FROM_ORIGIN = 240f;
+    private static final float PLANET_DISTANCE_FROM_ORIGIN = 480f;
 
     /** Start just above the pad, so the first step settles the ship onto it. */
     private static final float SPAWN_HEIGHT = Ship.HULL_RADIUS + 0.05f;

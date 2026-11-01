@@ -35,7 +35,7 @@ public final class Ship {
 
     // Engines. Thrust is a force in newtons, so a heavier ship accelerates less.
     // 25 kN on 1000 kg is 25 m/s², about 1.4× gravity at landing-zone height.
-    public static final float MAIN_ENGINE_THRUST = 25_000f;
+    public static final float MAIN_ENGINE_THRUST = 22_000f;
     /** Seconds of full-throttle burn. */
     public static final float MAIN_FUEL_CAPACITY = 500f;
     public static final float BOOSTER_THRUST = 15_000f;

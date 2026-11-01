@@ -18,7 +18,7 @@ import com.johnbronson.freefall.world.Planet;
 public final class CameraController {
 
     private static final float APPROACH_ZOOM = 1f;
-    private static final float CRUISE_ZOOM = 4f;
+    private static final float CRUISE_ZOOM = 8f;
     /** How quickly zoom eases toward its target. Higher is snappier. */
     private static final float ZOOM_RESPONSE = 2f;
 
