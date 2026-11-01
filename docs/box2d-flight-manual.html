@@ -824,7 +824,7 @@ body.<span class="hl">applyTorque</span>(body.getInertia() * angularAcceleration
       </figure>
 
       <h3>The gravity plateau</h3>
-      <p>Pure inverse-square gravity more than doubles between the top of the atmosphere and the ground, so a descent feels like the planet suddenly grabs the ship. Freefall caps it instead: below <code>GRAVITY_PLATEAU_RADIUS</code> (88.5 m from the center, about halfway between the landing zones and the atmosphere edge) the pull stops growing and holds steady. Above it, gravity is ordinary inverse-square, so orbits that stay above the plateau are still true closed ellipses.</p>
+      <p>Pure inverse-square gravity more than doubles between the top of the atmosphere and the ground, so a descent feels like the planet suddenly grabs the ship. Freefall caps it instead: below <code>GRAVITY_PLATEAU_RADIUS</code> (88.5 m from the center, derived as halfway between the landing zones and the atmosphere edge) the pull stops growing and holds steady. Above it, gravity is ordinary inverse-square, so orbits that stay above the plateau are still true closed ellipses.</p>
 <pre><code><span class="k">float</span> distance = (<span class="k">float</span>) Math.sqrt(dx * dx + dy * dy);
 <span class="k">if</span> (distance == <span class="hl">0f</span>) <span class="k">continue</span>;                     <span class="c">// no direction from the center</span>
 
@@ -838,13 +838,15 @@ out.add(dx / <span class="hl">distance</span> * magnitude, dy / <span class="hl"
       <h3>Tuning by surface gravity</h3>
       <p>Newton's law needs a "GM" for each planet, which is hard to guess. Instead, each planet declares the gravity you feel near the ground, which is the plateau value, and GM is derived from that:</p>
 <pre><code><span class="k">public static final float</span> SURFACE_GRAVITY = <span class="hl">18f</span>;          <span class="c">// m/s² at and below the plateau</span>
-<span class="k">public static final float</span> GRAVITY_PLATEAU_RADIUS = <span class="hl">88.5f</span>;  <span class="c">// m from the center</span>
+<span class="k">private static final float</span> GRAVITY_PLATEAU_FRACTION = <span class="hl">0.5f</span>;  <span class="c">// 0 = landing zones, 1 = atmosphere top</span>
+<span class="k">public static final float</span> GRAVITY_PLATEAU_RADIUS =              <span class="c">// m from the center: 88.5</span>
+    LANDING_ZONE_RADIUS + <span class="hl">GRAVITY_PLATEAU_FRACTION</span> * (ATMOSPHERE_RADIUS - LANDING_ZONE_RADIUS);
 
 <span class="k">public float</span> getGravitationalParameter() {
     <span class="k">return</span> SURFACE_GRAVITY * GRAVITY_PLATEAU_RADIUS * GRAVITY_PLATEAU_RADIUS;
 }</code></pre>
       <p class="file">world/Planet.java</p>
-      <p>Anchoring GM at the plateau radius makes the two pieces meet exactly there, with no jump in the pull. Two independent dials: <code>SURFACE_GRAVITY</code> sets how heavy landing feels, <code>GRAVITY_PLATEAU_RADIUS</code> sets how high the flat zone reaches. Raising either makes the pull stronger everywhere above the plateau too.</p>
+      <p>Anchoring GM at the plateau radius makes the two pieces meet exactly there, with no jump in the pull. Two independent dials: <code>SURFACE_GRAVITY</code> sets how heavy landing feels, <code>GRAVITY_PLATEAU_FRACTION</code> sets how high the flat zone reaches. The radius follows the planet's other radii, so resizing a planet moves the plateau with it. Raising either makes the pull stronger everywhere above the plateau too.</p>
       <div class="calc">
         <div><span class="lbl">At a landing zone</span><span class="val">18.0 <small>m/s²</small></span><span class="note">d = 69 m, on the plateau</span></div>
         <div><span class="lbl">Atmosphere edge</span><span class="val">12.1 <small>m/s²</small></span><span class="note">d = 108 m</span></div>

@@ -39,7 +39,7 @@ Box2D's world gravity is zero. `PlanetaryGravity` applies Newtonian gravity towa
 
 - [x] Implement gravity from both planetoids (inverse-square law, `PlanetaryGravity`; tested in `PlanetaryGravityTest`)
 - [x] Gravity plateau: below `Planet.GRAVITY_PLATEAU_RADIUS` (88.5 m) the pull holds at `SURFACE_GRAVITY` instead of growing, so descents don't feel like the planet suddenly grabs the ship. Above it, gravity stays inverse-square, so orbits above the plateau are still closed ellipses. Chosen over a lower falloff exponent, which would strengthen gravity far out and make orbits precess.
-- [ ] Derive the plateau radius instead of hard-coding 88.5: `LANDING_ZONE_RADIUS + GRAVITY_PLATEAU_FRACTION × (ATMOSPHERE_RADIUS − LANDING_ZONE_RADIUS)`, with the fraction at 0.5 (gives 88.5 today). Measured from the landing zones, the height `SURFACE_GRAVITY` describes. Prepares for per-planet sizes (Phase 11).
+- [x] Derive the plateau radius instead of hard-coding 88.5: `LANDING_ZONE_RADIUS + GRAVITY_PLATEAU_FRACTION × (ATMOSPHERE_RADIUS − LANDING_ZONE_RADIUS)`, with the fraction at 0.5 (gives 88.5 today). Measured from the landing zones, the height `SURFACE_GRAVITY` describes. Prepares for per-planet sizes (Phase 11).
 - [x] Add fuel counter to HUD
 - [x] Thrust consumes fuel
 - [x] Detect when ship enters atmosphere zone (`Planet.isInAtmosphere`, used by the camera and the HUD)

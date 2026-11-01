@@ -31,10 +31,17 @@ public final class Planet {
     public static final float SURFACE_GRAVITY = 18f;
 
     /**
+     * Where the plateau sits between the landing zones (0) and the top of the atmosphere (1).
+     */
+    private static final float GRAVITY_PLATEAU_FRACTION = 0.5f;
+
+    /**
      * Below this distance from the center, gravity stops increasing and holds at
      * {@link #SURFACE_GRAVITY}. Above it, gravity falls off with the square of the distance.
+     * Derived from the other planet constants, using GRAVITY_PLATEAU_FRACTION.
      */
-    public static final float GRAVITY_PLATEAU_RADIUS = 88.5f;
+    public static final float GRAVITY_PLATEAU_RADIUS =
+        LANDING_ZONE_RADIUS + GRAVITY_PLATEAU_FRACTION * (ATMOSPHERE_RADIUS - LANDING_ZONE_RADIUS);
 
     /**
      * Air density at and below the landing zones.

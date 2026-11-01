@@ -1,6 +1,7 @@
 package com.johnbronson.freefall.world;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.Box2D;
@@ -27,6 +28,14 @@ class PlanetTest {
 
     private Planet planetAtOrigin() {
         return new Planet(physics.getWorld(), 0f, 0f, 1L);
+    }
+
+    @Test
+    void gravityPlateauSitsBetweenTheLandingZonesAndTheTopOfTheAtmosphere() {
+        float plateau = Planet.GRAVITY_PLATEAU_RADIUS;
+
+        assertTrue(plateau >= Planet.LANDING_ZONE_RADIUS, "plateau " + plateau);
+        assertTrue(plateau <= Planet.ATMOSPHERE_RADIUS, "plateau " + plateau);
     }
 
     @Test
