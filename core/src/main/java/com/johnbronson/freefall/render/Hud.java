@@ -2,6 +2,7 @@ package com.johnbronson.freefall.render;
 
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Disposable;
@@ -38,6 +39,8 @@ public final class Hud implements Disposable {
         boolean inAtmosphere = nearest.isInAtmosphere(position);
         // Clamped: a flat segment dips slightly below the curve through its vertices.
         float altitude = Math.max(0f, nearest.altitudeOf(position) - Ship.HULL_RADIUS);
+        float angle = ship.getHull().getAngle(world.getAlpha());
+        float angleInDegrees = ((-angle * MathUtils.radiansToDegrees) % 360f + 360f) % 360f;
 
         viewport.apply();
         batch.setProjectionMatrix(viewport.getCamera().combined);
@@ -50,6 +53,7 @@ public final class Hud implements Disposable {
         y = line(String.format("Speed %.1f m/s", ship.getBody().getLinearVelocity().len()), y);
         y = line(String.format("Altitude %.1f m", altitude), y);
         y = line(inAtmosphere ? "In Atmo" : "In Vacuum", y);
+        y = line(String.format("Heading: %2f rad %.0f deg", angle, angleInDegrees), y);
 
         if (ship.getState() == Ship.FlightState.CRASHED) {
             y = line(ship.getCrashReason(), y);
