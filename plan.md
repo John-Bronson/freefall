@@ -33,6 +33,49 @@ Rebuilt on Box2D (2026-10): the ship is a dynamic body with a circular hull fixt
 - [ ] Add velocity vector debug display (arrow showing ship's current velocity). *Lost in the Box2D move. `DebugOverlay` draws Box2D shapes but not velocity; `Box2DDebugRenderer` has a `drawVelocities` flag.*
 - [x] Test: Can you thrust around and rotate? Does the ship respond predictably? (`ShipFlightTest` covers lift-off and attitude hold)
 
+### HUD heading indicator (in progress)
+
+A dial in `render/Hud.java`: a circle with a dot in the middle and a line from the dot to the edge, showing which way the ship points. It's relative to the screen, which matches the ship because the camera never rotates.
+
+Heading convention: compass-style for the pilot, so 0° is up, right is 90°, and clockwise is positive. Box2D's angle runs counter-clockwise, never wraps, and is 0 when the nose points up.
+
+Text readout:
+
+- [x] Read the interpolated angle: `ship.getHull().getAngle(world.getAlpha())`
+- [x] Convert to degrees, negate and wrap to 0–360 for display
+- [x] Add a `Heading` line to the HUD
+- [ ] Tidy the readout: drop the radians, which run the opposite way from the degrees, and the colon in `Heading:`. Rename `angleInDegrees` to `heading`.
+- [ ] Optional: round before wrapping so it can't show 360, using `(MathUtils.round(-angle * MathUtils.radiansToDegrees) % 360 + 360) % 360`. This gives an `int`, so format it with `%d`, not `%.0f`.
+
+Dial:
+
+- [ ] Add a `ShapeRenderer` field to `Hud`, and dispose it in `dispose()`
+- [ ] Add a `DIAL_RADIUS` constant (start at 30 px) and a named constant for the dot's radius (about 3 px)
+- [ ] Add `private void drawHeadingDial(float angle)`, and call it from `render()` **after** `batch.end()`, because the batch and the renderer can't both be drawing at once
+- [ ] Set the projection with `shapes.setProjectionMatrix(viewport.getCamera().combined)`, so coordinates are screen pixels
+- [ ] Center it in the bottom-right corner, clear of the text and crash lines: `centerX = viewport.getWorldWidth() - MARGIN - DIAL_RADIUS`, `centerY = MARGIN + DIAL_RADIUS`
+- [ ] Draw the outline with `ShapeType.Line` and `shapes.circle(centerX, centerY, DIAL_RADIUS, 32)`
+- [ ] Draw the line from the center to `center + nose * DIAL_RADIUS`, where `noseX = -MathUtils.sin(angle)` and `noseY = MathUtils.cos(angle)`. Use the raw `angle` in radians, not the negated display value.
+- [ ] Draw the dot in a second `begin`/`end` with `ShapeType.Filled`
+
+Checks:
+
+- [ ] Ship pointing up, right, down, left: the dial line points the same way, and the text reads 0, 90, 180, 270
+- [ ] Spinning past a full turn gives no negative numbers or values above 360
+- [ ] The dial keeps its size and corner when zooming out and when resizing the window
+- [ ] The crash text doesn't overlap the dial, and R restarts it correctly
+- [ ] `./gradlew test` still passes (it doesn't cover the HUD)
+
+If it looks wrong:
+
+- Line turns the opposite way from the ship: the minus sign on `sin` is missing, or the negated angle was passed in
+- Line is 90° off: `sin` and `cos` are swapped
+- Line barely moves or looks erratic: degrees were passed instead of radians
+- Crash mentioning `begin`/`end`: the dial is drawn before `batch.end()`, or a `begin` has no matching `end`
+- Dial missing or in the wrong place: the projection matrix isn't set
+
+Later: the ship spawns at about 79° because it stands upright on the surface, so screen heading isn't landing tilt. A tilt readout, or a mark on the dial for the local vertical, would help with landing (see `MAX_LANDING_TILT`).
+
 ## Phase 3: Gravity, Fuel & Atmospheric Drag
 
 Box2D's world gravity is zero. `PlanetaryGravity` applies Newtonian gravity toward every planet as a force before each step (`GameWorld.beforeStep`). Drag fits the same slot: a force applied before each step, computed from a pure function of position and velocity, which keeps it easy to unit-test. (The trajectory predictor stops at the atmosphere, so it never needs drag.) Don't use Box2D's `linearDamping`; it applies everywhere and ignores the atmosphere. Heat and overheat checks are game rules, so they go in `Ship.afterStep` and reuse `crash(reason)`.
