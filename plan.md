@@ -33,7 +33,7 @@ Rebuilt on Box2D (2026-10): the ship is a dynamic body with a circular hull fixt
 - [ ] Add velocity vector debug display (arrow showing ship's current velocity). *Lost in the Box2D move. `DebugOverlay` draws Box2D shapes but not velocity; `Box2DDebugRenderer` has a `drawVelocities` flag.*
 - [x] Test: Can you thrust around and rotate? Does the ship respond predictably? (`ShipFlightTest` covers lift-off and attitude hold)
 
-### HUD heading indicator (in progress)
+### HUD heading indicator ✓
 
 A dial in `render/Hud.java`: a circle with a dot in the middle and a line from the dot to the edge, showing which way the ship points. It's relative to the screen, which matches the ship because the camera never rotates.
 
@@ -44,27 +44,28 @@ Text readout:
 - [x] Read the interpolated angle: `ship.getHull().getAngle(world.getAlpha())`
 - [x] Convert to degrees, negate and wrap to 0–360 for display
 - [x] Add a `Heading` line to the HUD
-- [ ] Tidy the readout: drop the radians, which run the opposite way from the degrees, and the colon in `Heading:`. Rename `angleInDegrees` to `heading`.
+- [x] Tidy the readout: drop the radians, which run the opposite way from the degrees
+- [ ] Drop the colon in `Heading:` and rename `angleInDegrees` to `heading`
 - [ ] Optional: round before wrapping so it can't show 360, using `(MathUtils.round(-angle * MathUtils.radiansToDegrees) % 360 + 360) % 360`. This gives an `int`, so format it with `%d`, not `%.0f`.
 
 Dial:
 
-- [ ] Add a `ShapeRenderer` field to `Hud`, and dispose it in `dispose()`
-- [ ] Add a `DIAL_RADIUS` constant (start at 30 px) and a named constant for the dot's radius (about 3 px)
-- [ ] Add `private void drawHeadingDial(float angle)`, and call it from `render()` **after** `batch.end()`, because the batch and the renderer can't both be drawing at once
-- [ ] Set the projection with `shapes.setProjectionMatrix(viewport.getCamera().combined)`, so coordinates are screen pixels
-- [ ] Center it in the bottom-right corner, clear of the text and crash lines: `centerX = viewport.getWorldWidth() - MARGIN - DIAL_RADIUS`, `centerY = MARGIN + DIAL_RADIUS`
-- [ ] Draw the outline with `ShapeType.Line` and `shapes.circle(centerX, centerY, DIAL_RADIUS, 32)`
-- [ ] Draw the line from the center to `center + nose * DIAL_RADIUS`, where `noseX = -MathUtils.sin(angle)` and `noseY = MathUtils.cos(angle)`. Use the raw `angle` in radians, not the negated display value.
-- [ ] Draw the dot in a second `begin`/`end` with `ShapeType.Filled`
+- [x] Add a `ShapeRenderer` field to `Hud`, and dispose it in `dispose()`
+- [x] Add a `DIAL_RADIUS` constant (start at 30 px) and a named constant for the dot's radius (about 3 px)
+- [x] Add `private void drawHeadingDial(float angle)`, and call it from `render()` **after** `batch.end()`, because the batch and the renderer can't both be drawing at once
+- [x] Set the projection with `shapes.setProjectionMatrix(viewport.getCamera().combined)`, so coordinates are screen pixels
+- [x] Center it in the bottom-right corner, clear of the text and crash lines: `centerX = viewport.getWorldWidth() - MARGIN - DIAL_RADIUS`, `centerY = MARGIN + DIAL_RADIUS`
+- [x] Draw the outline with `ShapeType.Line` and `shapes.circle(centerX, centerY, DIAL_RADIUS, 32)`
+- [x] Draw the line from the center to `center + nose * DIAL_RADIUS`, where `noseX = -MathUtils.sin(angle)` and `noseY = MathUtils.cos(angle)`. Use the raw `angle` in radians, not the negated display value.
+- [x] Draw the dot in a second `begin`/`end` with `ShapeType.Filled`
 
 Checks:
 
-- [ ] Ship pointing up, right, down, left: the dial line points the same way, and the text reads 0, 90, 180, 270
-- [ ] Spinning past a full turn gives no negative numbers or values above 360
-- [ ] The dial keeps its size and corner when zooming out and when resizing the window
-- [ ] The crash text doesn't overlap the dial, and R restarts it correctly
-- [ ] `./gradlew test` still passes (it doesn't cover the HUD)
+- [x] Ship pointing up, right, down, left: the dial line points the same way, and the text reads 0, 90, 180, 270
+- [x] Spinning past a full turn gives no negative numbers or values above 360
+- [x] The dial keeps its size and corner when zooming out and when resizing the window
+- [x] The crash text doesn't overlap the dial, and R restarts it correctly
+- [x] `./gradlew test` still passes (it doesn't cover the HUD)
 
 If it looks wrong:
 
@@ -93,6 +94,30 @@ Box2D's world gravity is zero. `PlanetaryGravity` applies Newtonian gravity towa
 - [ ] Ship destruction if heat exceeds maximum
 - [ ] Add debug toggles: gravity on/off, infinite fuel, invincibility (no heat damage)
 - [ ] Test: Does gravity feel strong enough to matter but not overwhelming? Is fuel consumption rate reasonable?
+
+### Density-blended attitude control
+
+Goal: in dense air the ship holds its attitude as it does now (braking hard when the pilot lets go). In vacuum it keeps spinning, with only a little braking, so the pilot has to counter-steer to stop a turn. Blend between the two with air density, so the ship doesn't snap at the edge of the atmosphere.
+
+Approach: keep the existing rate controller in `Ship.applyAttitudeControl` and make its limits depend on density. Weak braking in vacuum produces the "reverse thrust to stop" feel on its own: pressing the opposite key sets a reversed target rate, which gets the full turn acceleration. No separate vacuum mode, and no Box2D `angularDamping`.
+
+Where the density comes from: don't store it. It's derived from the ship's position and the planets. `GameWorld` owns the planets, so it computes the density, and the ship receives it as an input to the step, like `dt`.
+
+- [ ] Add `GameWorld.airDensityAt(Vector2)`, which uses `nearestPlanetTo` and `Planet.airDensityAt`
+- [ ] In `GameWorld.beforeStep`, compute the density at the ship's position **every physics step** and pass it in: `ship.beforeStep(dt, airDensity)`. `ShipFlightTest` also calls `ship.beforeStep` directly, so it will need a density too.
+- [ ] Turn density into a 0..1 `authority`: clamp, since `SURFACE_AIR_DENSITY` can be above 1 on thick planets. The density falloff exponent keeps braking weak until fairly low. Remap with a different curve if that doesn't feel right.
+- [ ] Split the turn constants into vacuum and atmosphere pairs, and `MathUtils.lerp` them by `authority`:
+    - [ ] Top turn rate: `VACUUM_MAX_TURN_RATE` / `ATMO_MAX_TURN_RATE`. Start both at the current `MAX_TURN_RATE` and split later if tuning calls for it.
+    - [ ] Braking acceleration (no input): small in vacuum, large in atmosphere (today's `MAX_TURN_ACCELERATION`)
+- [ ] Controller: with input, the target is `turnInput * maxRate`, capped at the turn acceleration. Without input, the target is 0, capped at the braking acceleration.
+- [ ] Consider a gentler turn acceleration in vacuum. A quarter second to full rate suits auto-braking but may feel twitchy when the pilot has to brake manually.
+- [ ] Keep the wake flag rule: only wake the body when `turnInput != 0`
+- [ ] Add a spin-rate readout (deg/s) to the HUD next to the heading. It makes manual braking much easier to tune.
+- [ ] Edge case: letting go while spinning faster than the vacuum top rate. The weak braking just bleeds it off slowly. Probably fine; check it in play.
+- [ ] Later: when drag and heat also need density, group the step inputs into a `record Environment(float airDensity, ...)` and pass that instead
+- [ ] Update `ShipFlightTest` (attitude hold now depends on density: a test in vacuum should see the spin coast) and add a test that an atmosphere still stops the spin quickly
+- [ ] Update `docs/box2d-flight-manual.html`, which describes the attitude controller
+- [ ] Test: Does flipping in vacuum feel deliberate rather than sluggish? Is the change in handling during descent noticeable but not jarring?
 
 ## Phase 3.5: Physics Refactor & Trajectory Prediction
 
