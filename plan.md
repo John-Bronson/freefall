@@ -94,29 +94,45 @@ Box2D's world gravity is zero. `PlanetaryGravity` applies Newtonian gravity towa
 - [ ] Add debug toggles: gravity on/off, infinite fuel, invincibility (no heat damage)
 - [ ] Test: Does gravity feel strong enough to matter but not overwhelming? Is fuel consumption rate reasonable?
 
-### Density-blended attitude control
+### Attitude control: RCS turns, air damps (revised 2026-11-07)
 
-Goal: in dense air the ship holds its attitude as it does now (braking hard when the pilot lets go). In vacuum it keeps spinning, with only a little braking, so the pilot has to counter-steer to stop a turn. Blend between the two with air density, so the ship doesn't snap at the edge of the atmosphere.
+Goal: in vacuum the ship keeps spinning after the pilot lets go, so they have to counter-steer to stop a turn. In dense air the spin dies quickly on its own. This is one behavior that scales smoothly with density, so the ship doesn't snap at the edge of the atmosphere.
 
-Approach: keep the existing rate controller in `Ship.applyAttitudeControl` and make its limits depend on density. Weak braking in vacuum produces the "reverse thrust to stop" feel on its own: pressing the opposite key sets a reversed target rate, which gets the full turn acceleration. No separate vacuum mode, and no Box2D `angularDamping`.
+Model: two separate torques, one for the pilot and one for the environment.
+
+- **RCS (pilot):** fires only while a rotate key is held. It's the existing rate controller: the target is `turnInput * MAX_TURN_RATE`, capped at `MAX_TURN_ACCELERATION`. It has the same strength everywhere and doesn't depend on density. With no input it applies **no torque**, so there's no automatic attitude hold. Counter-steering comes free: pressing the opposite key sets a reversed target and gets the full turn acceleration.
+- **Air damping (environment):** a passive torque that always opposes the spin, `α = −SPIN_DAMPING × airDensity × ω`, applied as `torque = I × α`. At density 0 it vanishes and the ship coasts. It's the rotational twin of linear drag (density × speed, opposing motion), so it lives next to drag in `Ship` and follows the same rules.
+
+Why not lerp the braking limit (the earlier plan): one scaled cap would also weaken turning in vacuum, and it makes "letting go" an autopilot whose strength depends on the air. Separating pilot and air keeps the density in exactly one term. Still no Box2D `angularDamping`, which applies everywhere and ignores the atmosphere.
 
 Where the density comes from: don't store it. It's derived from the ship's position and the planets. `GameWorld` owns the planets, so it computes the density, and the ship receives it as an input to the step, like `dt`.
 
-- [ ] Add `GameWorld.airDensityAt(Vector2)`, which uses `nearestPlanetTo` and `Planet.airDensityAt`
-- [ ] In `GameWorld.beforeStep`, compute the density at the ship's position **every physics step** and pass it in: `ship.beforeStep(dt, airDensity)`. `ShipFlightTest` also calls `ship.beforeStep` directly, so it will need a density too.
-- [ ] Turn density into a 0..1 `authority`: clamp, since `SURFACE_AIR_DENSITY` can be above 1 on thick planets. The density falloff exponent keeps braking weak until fairly low. Remap with a different curve if that doesn't feel right.
-- [ ] Split the turn constants into vacuum and atmosphere pairs, and `MathUtils.lerp` them by `authority`:
-    - [ ] Top turn rate: `VACUUM_MAX_TURN_RATE` / `ATMO_MAX_TURN_RATE`. Start both at the current `MAX_TURN_RATE` and split later if tuning calls for it.
-    - [ ] Braking acceleration (no input): small in vacuum, large in atmosphere (today's `MAX_TURN_ACCELERATION`)
-- [ ] Controller: with input, the target is `turnInput * maxRate`, capped at the turn acceleration. Without input, the target is 0, capped at the braking acceleration.
-- [ ] Consider a gentler turn acceleration in vacuum. A quarter second to full rate suits auto-braking but may feel twitchy when the pilot has to brake manually.
-- [ ] Keep the wake flag rule: only wake the body when `turnInput != 0`
-- [ ] Add a spin-rate readout (deg/s) to the HUD next to the heading. It makes manual braking much easier to tune.
-- [ ] Edge case: letting go while spinning faster than the vacuum top rate. The weak braking just bleeds it off slowly. Probably fine; check it in play.
+- [x] Add `GameWorld.airDensityAt(Vector2)`, which uses `nearestPlanetTo` and `Planet.airDensityAt`
+- [x] In `GameWorld.beforeStep`, compute the density at the ship's raw body position **every physics step** and pass it in: `ship.beforeStep(dt, airDensity)`. `ShipFlightTest` passes its planet's density too.
+- [ ] RCS: in `applyAttitudeControl`, apply the rate-controller torque only when `steering` (`turnInput != 0`). With no input, return without applying torque. Keep the wake flag rule (wake only while steering).
+- [ ] Air damping: add `applySpinDamping(dt, airDensity)` beside the RCS, called from `beforeStep` every step whether or not the pilot is steering
+    - [ ] Add a `SPIN_DAMPING` constant in 1/s at the reference density (`SURFACE_AIR_DENSITY` = 1). The spin's time constant is `1 / (SPIN_DAMPING × density)`. Start around 3/s (a third of a second at the surface) and tune.
+    - [ ] Multiply by `body.getInertia()` so the constant is a rate, independent of the ship's mass
+    - [ ] Clamp so one step can never reverse the spin: `SPIN_DAMPING × density × dt ≤ 1` (same idea as the drag clamp below)
+    - [ ] Apply with `wake = false`, so damping never keeps a sleeping ship awake
+- [ ] Check that the RCS can still reach full turn rate in the thickest air: at top rate the damping is `SPIN_DAMPING × density × MAX_TURN_RATE`, which must stay below `MAX_TURN_ACCELERATION`. With 3/s that's 3 × 2π against 4 × 2π, so it fits but leaves little spare acceleration for spinning up. Much above 4/s, the ship can't reach full turn rate near the ground.
+- [ ] Consider a gentler `MAX_TURN_ACCELERATION`. A quarter second to full rate may feel twitchy now that the pilot does all the braking in vacuum.
+- [ ] Add a spin-rate readout (deg/s) to the HUD next to the heading, negated so clockwise is positive like the heading. It makes manual braking much easier to tune.
+- [ ] Edge case, on the ground: the old controller also cancelled spin from scraping the terrain, and the hull is a circle, which can roll. Check that touchdowns with sideways speed still settle (surface density is 1, so damping is strongest there) and that `restingShipStaysLandedWithoutFlickering` still passes. Landing legs (Phase 4) fix this for good, since feet with friction stop the roll.
+- [ ] Edge case: the damping is exponential, so a spin never quite reaches zero. Box2D's sleep should absorb the tail on the ground; in flight a slow residual drift is expected.
 - [ ] Later: when drag and heat also need density, group the step inputs into a `record Environment(float airDensity, ...)` and pass that instead
-- [ ] Update `ShipFlightTest` (attitude hold now depends on density: a test in vacuum should see the spin coast) and add a test that an atmosphere still stops the spin quickly
-- [ ] Update `docs/box2d-flight-manual.html`, which describes the attitude controller
+- [ ] Update `ShipFlightTest`: `attitudeControlTurnsAtTheRequestedRateThenHolds` expects the spin to stop within 0.5 s at 30 m, which no longer holds. Replace it with explicit-density tests: in vacuum (0) the spin coasts after release, in atmosphere (1) it decays quickly, and a counter-steer stops it in vacuum.
+- [ ] Update `docs/box2d-flight-manual.html`: the "Attitude control with torque" section and the `applyTorque` table row describe attitude hold with no input
 - [ ] Test: Does flipping in vacuum feel deliberate rather than sluggish? Is the change in handling during descent noticeable but not jarring?
+
+#### Later: hold-attitude button
+
+A pilot aid mapped to its own button (an "SAS", in the style of Kerbal Space Program). While it's active and there's no turn input, the RCS targets a rate of 0, which is today's behavior. It brakes at the full turn acceleration in any air.
+
+- [ ] Add a `HOLD_ATTITUDE` `InputAction` with keyboard and controller bindings, plus a `Ship.setHoldAttitude(boolean)` intent beside `setTurnInput`
+- [ ] Decide between holding the button and toggling it. A toggle needs a HUD indicator.
+- [ ] Wake rule: holding should wake the body only while it's actually spinning, or a parked ship with hold on never sleeps
+- [ ] Later, if the RCS gets fuel: holding attitude spends it, which gives the button a cost
 
 ## Phase 3.5: Physics Refactor & Trajectory Prediction
 
@@ -178,19 +194,60 @@ A Box2D `World` can't be cloned and stepped ahead without moving the real ship, 
 
 Drag depends on velocity, not position, and opposes it. With a large step it can overshoot and reverse velocity, causing jitter or instability. Clamp the per-step drag so it never removes more speed than the ship has (force × dt / mass ≤ speed). The `density * speed` product computed for drag is also the input for heat buildup. The trajectory predictor doesn't model drag (it stops at the atmosphere), so drag doesn't need to be a pure function for its sake, though keeping it one still makes it easy to unit-test.
 
-## Phase 4: Collision Detection ✓ (via Box2D)
+## Phase 4: Collision Detection ✓ (via Box2D), landing legs to do
 
 - [x] Implement collision detection between ship and terrain. Each planet is a static body with a terrain `ChainShape`; Box2D's continuous collision keeps the ship from tunneling. Filter bits in `CollisionCategory`, fixture roles in `FixtureRole`.
 - [x] Ship crashes on a bad touchdown: `CRASHED` state, red hull, reason shown on the HUD.
 - [x] Add collision bounds debug visualization (`DebugOverlay` with `Box2DDebugRenderer`, toggled with ')
 - [x] Detect when ship is "grounded" vs "flying" (`FlightState` `FLYING` / `LANDED` / `CRASHED`; `ShipContactListener` counts ground contacts and records the hardest hit, `Ship.afterStep` decides)
 - [x] Test: `ShipFlightTest` runs Box2D headlessly (gentle, fast and tilted touchdowns, resting without flicker, lift-off)
-- [ ] Hull is a single circle. Landing legs (−Y) as extra fixtures would make touchdown read better and let tilt matter more physically.
+- [ ] Landing legs with suspension: see the next section. This replaces the single-circle hull touchdown.
+
+### Landing legs & suspension (core feel, planned 2026-11-07)
+
+Goal: a hard touchdown is exciting because the shocks might not survive it. A gentle landing compresses the legs and settles. A firm one bottoms out with a jolt. A too-hard one snaps a leg, and the ship tips and may still be saved, or it doesn't, and the hull hits the ground. Survival becomes a range with drama in the middle, instead of one pass/fail speed.
+
+Model: the legs are real Box2D parts, not a speed check dressed up.
+
+- **Legs:** two legs (left and right of −Y). Each leg is its own small dynamic body (a strut with a foot) joined to the hull. The foot is what touches the terrain.
+- **Suspension:** each joint slides along the leg's axis, with travel limits (fully extended / fully compressed) and a spring-damper. Two ways to build it, decide when starting:
+    - `WheelJoint`: a slider with a built-in spring (`setSpringFrequencyHz`, `setSpringDampingRatio`) that is normally used for car suspension. Quickest to try. The foot is free to rotate, which is fine for a round foot.
+    - `PrismaticJoint` with limits plus a hand-written spring force (`F = −k·x − c·v`) applied in `Ship.beforeStep`. More code, but full control: a stiffer spring near the end of the travel, and the compression and its speed are directly readable for the break rules. Fits the "intent and environment → forces before the step" pattern. **Leaning this way**; prototype with `WheelJoint` if it helps to feel the numbers first.
+- **Breaking:** Box2D joints never break on their own. In `Ship.afterStep` (outside `world.step`, so destroying joints is safe), check each leg and break it when its limit is exceeded. Candidates, from simplest:
+    - Compression speed at the moment the leg bottoms out (it hits the compressed limit while still moving fast)
+    - The joint's reaction force, `joint.getReactionForce(1 / dt)`, above a strength
+    - Leg health that takes damage from each bottom-out, so two firm landings can break what one wouldn't
+- **Broken leg:** destroy the joint. The leg becomes loose debris (it keeps its body, so it tumbles away with the right velocity), and the ship now stands on one leg plus the hull.
+- **Crash rule:** the hull touching the ground is what crashes the ship (or a hull hit above some speed), not touchdown speed. `MAX_LANDING_SPEED` goes away or becomes a fallback. Tilt still matters, but now physically: one leg lands first and takes all the load.
+
+Tasks:
+
+- [ ] Choose the leg geometry for the current 1.2 m hull, keeping in mind the planned retune to ~2.5 m (Art Direction). Keep the leg positions and sizes as named constants so the retune only touches numbers.
+- [ ] Add a `FixtureRole.LANDING_LEG` (foot) and give the legs filter bits that hit the terrain but not the hull (`CollisionCategory`)
+- [ ] Build the leg bodies and joints in the `Ship` constructor. Keep the mass ratio sane: Box2D gets springy and unstable when a joint links a heavy body to a very light one (hull 1000 kg, so legs no lighter than about a tenth of that)
+- [ ] `removeFrom(world)` destroys the leg bodies too (destroying a body also destroys its joints). Broken-off legs need cleaning up on restart too.
+- [ ] Interpolate the legs: each leg body gets an `InterpolatedBody`, saved in `beforeStep` like the hull
+- [ ] Suspension spring and damper, with travel limits. Tune for "settles in under a second with one small bounce"
+- [ ] `ShipContactListener`: record foot contacts and hull contacts separately. The hull's hardest hit stays, a foot's touchdown speed is recorded per leg
+- [ ] `Ship.afterStep` rules: LANDED once both feet are down and the ship has settled (low speed and spin for a short time), CRASHED on a bad hull hit, leg break checks
+- [ ] Keep sleep working: a ship resting on its springs must still fall asleep, and `restingShipStaysLandedWithoutFlickering` must still pass
+- [ ] Draw the legs in `ShipRenderer`, with the strut visibly compressing (placeholder lines first, pixel art later)
+- [ ] Feedback for the drama: a jolt or camera shake on bottom-out, a distinct cue and HUD message on a leg break, and sound slots for both (Phase 10). Show leg health on the HUD if health is used.
+- [ ] Gameplay follow-ups: does a broken leg stay broken after lift-off (a lasting cost until docking repairs it, Phase 7)? Can you take off from one leg?
+- [ ] Tests in `ShipFlightTest`: a gentle touchdown compresses and settles, a firm one bottoms out but holds, a hard one breaks a leg, a tilted one loads one leg first, a hull hit crashes, and a resting ship sleeps. Replace the speed-based touchdown tests.
+- [ ] Update `docs/box2d-flight-manual.html`: joints, springs, breaking joints outside the step
+- [ ] Test: Is the gap between "bottomed out" and "snapped" wide enough to feel, and readable enough that the player knows what happened?
+
+Knock-on effects:
+
+- The circle hull can roll after a sideways touchdown, and the old attitude hold used to stop it. Feet with friction stop the roll, so this fixes the ground edge case in the attitude-control section of Phase 3.
+- Phase 5's landing-zone check moves to the feet: both feet on a flat zone.
+- Phase 9 (rotating planets): judge the leg compression speed relative to the ground's velocity, the same as touchdown speed.
 
 ## Phase 5: Landing Success Criteria
 
 - [ ] Implement landing validation:
-    - [x] Low velocity (`MAX_LANDING_SPEED`, 10 m/s impact speed)
+    - [x] Low velocity (`MAX_LANDING_SPEED`, 10 m/s impact speed). Landing legs replace this with leg-break and hull-hit rules (Phase 4).
     - [x] Near-vertical angle (`MAX_LANDING_TILT`, 15° from the planet's local up)
     - [ ] On a flat landing zone. `judgeTouchdown` doesn't check this yet, so a gentle touchdown on rough terrain counts as landed. Use the touchdown point's angle around the planet against the `LandingZone` ranges.
 - [ ] Also check that ship isn't overheated
