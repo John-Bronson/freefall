@@ -10,6 +10,7 @@ This project is a learning exercise. The developer is experienced with frontend 
 - Relate Java/LibGDX concepts to Angular/TypeScript equivalents when it helps understanding.
 - It's okay to review code the user has written and suggest improvements.
 - If the user explicitly asks for code, confirm first — the default is guidance, not implementation.
+- **Exception — tests:** keep the tests in step with the user's changes. When their edits break or change behavior covered by tests in `core/src/test` (e.g. a changed signature), update the tests directly, without asking first. Then run `./gradlew test` and say what you changed. Production code stays the user's to write.
 
 ## Project Overview
 

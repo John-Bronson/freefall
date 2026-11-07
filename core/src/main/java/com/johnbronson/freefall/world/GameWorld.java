@@ -63,13 +63,18 @@ public final class GameWorld implements StepListener, Disposable {
 
     @Override
     public void beforeStep(float dt) {
-        ship.beforeStep(dt);
+        ship.beforeStep(dt, airDensityAt(ship.getBody().getPosition()));
         gravity.applyTo(physics.getWorld());
     }
 
     @Override
     public void afterStep(float dt) {
         ship.afterStep();
+    }
+
+    /** Relative air density at a point, from the nearest planet */
+    public float airDensityAt(Vector2 point) {
+        return nearestPlanetTo(point).airDensityAt(point);
     }
 
     /** Replaces the ship with a fresh one at the next update. */

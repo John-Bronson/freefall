@@ -136,7 +136,7 @@ public final class Ship {
     // ---- Physics step -------------------------------------------------------
 
     /** Turns pilot intent into forces. Call before every world step. */
-    public void beforeStep(float dt) {
+    public void beforeStep(float dt, float airDensity) {
         hull.savePreviousTransform();
 
         if (state == FlightState.CRASHED) {
@@ -185,6 +185,7 @@ public final class Ship {
      * the hull.
      */
     private void applyAttitudeControl(float dt) {
+        boolean steering = turnInput != 0f;
         float targetRate = turnInput * MAX_TURN_RATE;
         float neededAcceleration = (targetRate - body.getAngularVelocity()) / dt;
         float angularAcceleration = MathUtils.clamp(neededAcceleration, -MAX_TURN_ACCELERATION, MAX_TURN_ACCELERATION);
@@ -192,7 +193,7 @@ public final class Ship {
         // Torque = I × α, the rotational twin of F = m × a.
         // Only wake the ship when the pilot is steering. Holding attitude on a
         // sleeping ship would keep it awake forever.
-        body.applyTorque(body.getInertia() * angularAcceleration, turnInput != 0f);
+        body.applyTorque(body.getInertia() * angularAcceleration, steering);
     }
 
     /** Game rules. Call after every world step, when contacts for the step are known. */

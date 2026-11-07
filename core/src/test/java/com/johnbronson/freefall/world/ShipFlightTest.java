@@ -52,7 +52,7 @@ class ShipFlightTest {
 
         @Override
         public void beforeStep(float dt) {
-            ship.beforeStep(dt);
+            ship.beforeStep(dt, planet.airDensityAt(ship.getBody().getPosition()));
             gravity.applyTo(physics.getWorld());
         }
 

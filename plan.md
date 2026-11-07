@@ -45,8 +45,7 @@ Text readout:
 - [x] Convert to degrees, negate and wrap to 0–360 for display
 - [x] Add a `Heading` line to the HUD
 - [x] Tidy the readout: drop the radians, which run the opposite way from the degrees
-- [ ] Drop the colon in `Heading:` and rename `angleInDegrees` to `heading`
-- [ ] Optional: round before wrapping so it can't show 360, using `(MathUtils.round(-angle * MathUtils.radiansToDegrees) % 360 + 360) % 360`. This gives an `int`, so format it with `%d`, not `%.0f`.
+- [x] Optional: round before wrapping so it can't show 360, using `(MathUtils.round(-angle * MathUtils.radiansToDegrees) % 360 + 360) % 360`. This gives an `int`, so format it with `%d`, not `%.0f`.
 
 Dial:
 
