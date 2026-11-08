@@ -45,7 +45,7 @@ public final class Ship {
     // Attitude control ("RCS thrusters").
     private static final float MAX_TURN_RATE = MathUtils.PI2;
     /** Reaches full turn rate in a quarter second. */
-    private static final float MAX_TURN_ACCELERATION = 4f * MathUtils.PI2;
+    private static final float MAX_TURN_ACCELERATION = 0.5f * MathUtils.PI2;
     /**
      * Fraction of the ship's spin the air removes per second, at the reference density.
      * The spin's time constant is 1 / (SPIN_DAMPING × density).
