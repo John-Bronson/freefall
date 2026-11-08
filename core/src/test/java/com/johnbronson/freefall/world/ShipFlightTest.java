@@ -31,6 +31,8 @@ class ShipFlightTest {
         Ship ship;
         /** When set, every step uses this air density instead of the planet's. */
         Float fixedAirDensity;
+        /** Off for tests that only care about rotation, so the ship never hits the ground. */
+        boolean gravityOn = true;
 
         TestWorld() {
             physics.getWorld().setContactListener(new ShipContactListener());
@@ -59,7 +61,7 @@ class ShipFlightTest {
                 ? fixedAirDensity
                 : planet.airDensityAt(ship.getBody().getPosition());
             ship.beforeStep(dt, airDensity);
-            gravity.applyTo(physics.getWorld());
+            if (gravityOn) gravity.applyTo(physics.getWorld());
         }
 
         @Override
@@ -84,7 +86,7 @@ class ShipFlightTest {
     @Test
     void gentleUprightTouchdownLandsAndFallsAsleep() {
         world = new TestWorld();
-        Ship ship = world.placeShip(0.2f, 0f, 2f);
+        Ship ship = world.placeShip(0.2f, 0f, 0.2f * Ship.MAX_LANDING_SPEED);
 
         world.run(1f);
         assertEquals(FlightState.LANDED, ship.getState());
@@ -108,7 +110,7 @@ class ShipFlightTest {
     @Test
     void tiltedTouchdownCrashes() {
         world = new TestWorld();
-        Ship ship = world.placeShip(0.2f, 30f, 1f);
+        Ship ship = world.placeShip(0.2f, 2f * Ship.MAX_LANDING_TILT * MathUtils.radDeg, 0.1f * Ship.MAX_LANDING_SPEED);
 
         world.run(1f);
 
@@ -116,23 +118,24 @@ class ShipFlightTest {
         assertTrue(ship.getCrashReason().contains("tilted"), ship.getCrashReason());
     }
 
-    /** High enough above the pad that a test spinning for 1.5 s never reaches the ground. */
-    private static final float SPIN_TEST_HEIGHT = 60f;
+    /** Time for the RCS to take the spin from zero to full rate, or from full rate to zero. */
+    private static final float FULL_TURN_TIME = Ship.MAX_TURN_RATE / Ship.MAX_TURN_ACCELERATION;
 
-    /** Spins the ship up to full counter-clockwise turn rate at the given air density. */
+    /** Spins the ship up to full counter-clockwise turn rate at the given air density, without gravity. */
     private Ship spinUp(float airDensity) {
         world = new TestWorld();
         world.fixedAirDensity = airDensity;
-        Ship ship = world.placeShip(SPIN_TEST_HEIGHT, 0f, 0f);
+        world.gravityOn = false;
+        Ship ship = world.placeShip(10f, 0f, 0f);
         ship.setTurnInput(1f);
-        world.run(0.5f);
+        world.run(FULL_TURN_TIME + 0.5f);
         return ship;
     }
 
     @Test
     void attitudeControlTurnsAtTheRequestedRateInVacuum() {
         Ship ship = spinUp(0f);
-        assertEquals(MathUtils.PI2, ship.getBody().getAngularVelocity(), 0.01f);
+        assertEquals(Ship.MAX_TURN_RATE, ship.getBody().getAngularVelocity(), 0.01f);
     }
 
     @Test
@@ -141,7 +144,7 @@ class ShipFlightTest {
 
         ship.setTurnInput(0f);
         world.run(1f);
-        assertEquals(MathUtils.PI2, ship.getBody().getAngularVelocity(), 0.01f);
+        assertEquals(Ship.MAX_TURN_RATE, ship.getBody().getAngularVelocity(), 0.01f);
     }
 
     @Test
@@ -150,7 +153,7 @@ class ShipFlightTest {
 
         // Full opposite input for exactly as long as it takes to cancel the spin.
         ship.setTurnInput(-1f);
-        world.run(0.25f);
+        world.run(FULL_TURN_TIME);
         assertEquals(0f, ship.getBody().getAngularVelocity(), 0.05f);
     }
 
@@ -159,10 +162,11 @@ class ShipFlightTest {
         Ship ship = spinUp(1f);
         float spinAtRelease = ship.getBody().getAngularVelocity();
 
+        // Three time constants (1 / (SPIN_DAMPING × density)) leave about 5% of the spin.
         ship.setTurnInput(0f);
-        world.run(1f);
+        world.run(3f / Ship.SPIN_DAMPING);
         float spin = ship.getBody().getAngularVelocity();
-        assertTrue(spin < 0.1f * spinAtRelease, "spin should mostly decay within a second, was " + spin);
+        assertTrue(spin < 0.1f * spinAtRelease, "spin should mostly decay within three time constants, was " + spin);
         assertTrue(spin >= 0f, "damping must never reverse the spin, was " + spin);
     }
 
@@ -171,7 +175,8 @@ class ShipFlightTest {
         Ship ship = spinUp(0f);
 
         ship.setTurnInput(0f);
-        world.fixedAirDensity = 1000f;
+        // Thick enough that one step's damping would overshoot tenfold without the cap.
+        world.fixedAirDensity = 10f / (Ship.SPIN_DAMPING * PhysicsWorld.TIME_STEP);
         world.run(PhysicsWorld.TIME_STEP);
         assertEquals(0f, ship.getBody().getAngularVelocity(), 0.01f);
     }
@@ -181,7 +186,7 @@ class ShipFlightTest {
         GameWorld game = new GameWorld(1L);
         try {
             Ship crashed = game.getShip();
-            crashed.getBody().setLinearVelocity(0f, -30f);
+            crashed.getBody().setLinearVelocity(0f, -3f * Ship.MAX_LANDING_SPEED);
             for (int i = 0; i < 120; i++) game.update(PhysicsWorld.TIME_STEP);
             assertEquals(FlightState.CRASHED, crashed.getState());
 

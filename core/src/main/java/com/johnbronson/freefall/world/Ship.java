@@ -38,19 +38,25 @@ public final class Ship {
     public static final float MAIN_ENGINE_THRUST = 22_000f;
     /** Seconds of full-throttle burn. */
     public static final float MAIN_FUEL_CAPACITY = 500f;
-    public static final float BOOSTER_THRUST = 15_000f;
+    public static final float BOOSTER_THRUST = 150_000f;
     public static final float BOOSTER_BURN_TIME = 2f;
     public static final int BOOSTER_CHARGES = 1;
 
     // Attitude control ("RCS thrusters").
-    private static final float MAX_TURN_RATE = MathUtils.PI2;
-    /** Reaches full turn rate in a quarter second. */
-    private static final float MAX_TURN_ACCELERATION = 0.5f * MathUtils.PI2;
+    /** Top spin rate the RCS steers toward, in radians per second. */
+    static final float MAX_TURN_RATE = MathUtils.PI2;
+    /**
+     * RCS strength: how fast the spin rate can change, in radians per second squared.
+     * In thick air the spin damping works against the RCS, so the ship tops out below
+     * {@link #MAX_TURN_RATE}, at the rate where this equals
+     * {@link #SPIN_DAMPING} × density × rate.
+     */
+    static final float MAX_TURN_ACCELERATION = 0.5f * MathUtils.PI2;
     /**
      * Fraction of the ship's spin the air removes per second, at the reference density.
      * The spin's time constant is 1 / (SPIN_DAMPING × density).
      */
-    private static final float SPIN_DAMPING = 3f;
+    static final float SPIN_DAMPING = 3f;
 
     // Landing rules.
     public static final float MAX_LANDING_SPEED = 10f;
