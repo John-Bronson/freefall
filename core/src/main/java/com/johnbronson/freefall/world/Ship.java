@@ -46,6 +46,11 @@ public final class Ship {
     private static final float MAX_TURN_RATE = MathUtils.PI2;
     /** Reaches full turn rate in a quarter second. */
     private static final float MAX_TURN_ACCELERATION = 4f * MathUtils.PI2;
+    /**
+     * Fraction of the ship's spin the air removes per second, at the reference density.
+     * The spin's time constant is 1 / (SPIN_DAMPING × density).
+     */
+    private static final float SPIN_DAMPING = 3f;
 
     // Landing rules.
     public static final float MAX_LANDING_SPEED = 10f;
@@ -146,6 +151,7 @@ public final class Ship {
         applyMainEngine(dt);
         applyBooster(dt);
         applyAttitudeControl(dt);
+        applySpinDamping(dt, airDensity);
     }
 
     private void applyMainEngine(float dt) {
@@ -176,9 +182,10 @@ public final class Ship {
     }
 
     /**
-     * Arcade rotation done with real physics. Each step, apply the torque that brings
-     * the spin rate toward the pilot's requested rate (zero when there's no input, so
-     * the ship holds its attitude). The torque is capped so the change isn't instant.
+     * The RCS thrusters: arcade rotation done with real physics. While the pilot steers,
+     * apply the torque that brings the spin rate toward the requested rate, capped so
+     * the change isn't instant. With no input the thrusters are off and the ship keeps
+     * its spin. Only the air slows it down ({@link #applySpinDamping}).
      *
      * <p>The alternative, {@code setTransform}, teleports the angle. It skips
      * collision response and would tear jointed parts such as landing legs away from
@@ -186,14 +193,34 @@ public final class Ship {
      */
     private void applyAttitudeControl(float dt) {
         boolean steering = turnInput != 0f;
+
+        // No input: the thrusters are off and the ship coasts.
+        if (!steering) {
+            return;
+        }
+
         float targetRate = turnInput * MAX_TURN_RATE;
         float neededAcceleration = (targetRate - body.getAngularVelocity()) / dt;
         float angularAcceleration = MathUtils.clamp(neededAcceleration, -MAX_TURN_ACCELERATION, MAX_TURN_ACCELERATION);
 
         // Torque = I × α, the rotational twin of F = m × a.
-        // Only wake the ship when the pilot is steering. Holding attitude on a
-        // sleeping ship would keep it awake forever.
-        body.applyTorque(body.getInertia() * angularAcceleration, steering);
+        // wake = true: steering must wake a ship that fell asleep on a landing zone.
+        body.applyTorque(body.getInertia() * angularAcceleration, true);
+    }
+
+    /**
+     * Air resistance to spinning: a torque that always opposes the spin, scaled by air
+     * density. In vacuum it's zero and the ship coasts. Near the ground it stops a spin
+     * within about a second.
+     */
+    private void applySpinDamping(float dt, float airDensity) {
+        // Capped at 1, so one step can at most stop the spin, never reverse it.
+        float fractionToReduce = Math.min(SPIN_DAMPING * airDensity * dt, 1f);
+        float angularAcceleration = -fractionToReduce * body.getAngularVelocity() / dt;
+
+        // wake = false: this runs every step, so waking would keep a resting ship
+        // awake forever. A sleeping ship isn't spinning, so there's nothing to damp.
+        body.applyTorque(body.getInertia() * angularAcceleration, false);
     }
 
     /** Game rules. Call after every world step, when contacts for the step are known. */
@@ -208,7 +235,7 @@ public final class Ship {
         if (planet != null) {
             judgeTouchdown(planet, speed);
         } else if (state == FlightState.LANDED && groundContacts == 0) {
-            state = FlightState.FLYING;
+            setState(FlightState.FLYING);
         }
     }
 
@@ -220,7 +247,7 @@ public final class Ship {
             crash(String.format("Touched down tilted %.0f° (max %.0f°)",
                 tilt * MathUtils.radDeg, MAX_LANDING_TILT * MathUtils.radDeg));
         } else {
-            state = FlightState.LANDED;
+            setState(FlightState.LANDED);
         }
     }
 
@@ -231,8 +258,20 @@ public final class Ship {
         return Math.abs((float) Math.atan2(localUp.crs(nose), localUp.dot(nose)));
     }
 
+    /**
+     * The only place {@code state} changes after construction, so the rotation lock
+     * always matches it. Call it outside world.step(), as {@link #afterStep()} does.
+     */
+    private void setState(FlightState newState) {
+        state = newState;
+        // Stand-in until landing legs: the hull is a circle, and nothing else stops it
+        // rolling on the pad. Locking the rotation also zeroes the spin. Remove this
+        // once feet with friction hold the ship in place.
+        body.setFixedRotation(newState == FlightState.LANDED);
+    }
+
     private void crash(String reason) {
-        state = FlightState.CRASHED;
+        setState(FlightState.CRASHED);
         crashReason = reason;
         boosterTimeLeft = 0f;
     }

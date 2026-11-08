@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.Box2D;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.GdxNativesLoader;
@@ -28,6 +29,8 @@ class ShipFlightTest {
         final Planet planet = new Planet(physics.getWorld(), 0f, 0f, 7L);
         final PlanetaryGravity gravity = new PlanetaryGravity(Array.with(planet));
         Ship ship;
+        /** When set, every step uses this air density instead of the planet's. */
+        Float fixedAirDensity;
 
         TestWorld() {
             physics.getWorld().setContactListener(new ShipContactListener());
@@ -52,7 +55,10 @@ class ShipFlightTest {
 
         @Override
         public void beforeStep(float dt) {
-            ship.beforeStep(dt, planet.airDensityAt(ship.getBody().getPosition()));
+            float airDensity = fixedAirDensity != null
+                ? fixedAirDensity
+                : planet.airDensityAt(ship.getBody().getPosition());
+            ship.beforeStep(dt, airDensity);
             gravity.applyTo(physics.getWorld());
         }
 
@@ -110,17 +116,63 @@ class ShipFlightTest {
         assertTrue(ship.getCrashReason().contains("tilted"), ship.getCrashReason());
     }
 
-    @Test
-    void attitudeControlTurnsAtTheRequestedRateThenHolds() {
-        world = new TestWorld();
-        Ship ship = world.placeShip(30f, 0f, 0f);
+    /** High enough above the pad that a test spinning for 1.5 s never reaches the ground. */
+    private static final float SPIN_TEST_HEIGHT = 60f;
 
+    /** Spins the ship up to full counter-clockwise turn rate at the given air density. */
+    private Ship spinUp(float airDensity) {
+        world = new TestWorld();
+        world.fixedAirDensity = airDensity;
+        Ship ship = world.placeShip(SPIN_TEST_HEIGHT, 0f, 0f);
         ship.setTurnInput(1f);
         world.run(0.5f);
+        return ship;
+    }
+
+    @Test
+    void attitudeControlTurnsAtTheRequestedRateInVacuum() {
+        Ship ship = spinUp(0f);
         assertEquals(MathUtils.PI2, ship.getBody().getAngularVelocity(), 0.01f);
+    }
+
+    @Test
+    void spinCoastsAfterReleaseInVacuum() {
+        Ship ship = spinUp(0f);
 
         ship.setTurnInput(0f);
-        world.run(0.5f);
+        world.run(1f);
+        assertEquals(MathUtils.PI2, ship.getBody().getAngularVelocity(), 0.01f);
+    }
+
+    @Test
+    void counterSteeringStopsTheSpinInVacuum() {
+        Ship ship = spinUp(0f);
+
+        // Full opposite input for exactly as long as it takes to cancel the spin.
+        ship.setTurnInput(-1f);
+        world.run(0.25f);
+        assertEquals(0f, ship.getBody().getAngularVelocity(), 0.05f);
+    }
+
+    @Test
+    void airDampsTheSpinAfterRelease() {
+        Ship ship = spinUp(1f);
+        float spinAtRelease = ship.getBody().getAngularVelocity();
+
+        ship.setTurnInput(0f);
+        world.run(1f);
+        float spin = ship.getBody().getAngularVelocity();
+        assertTrue(spin < 0.1f * spinAtRelease, "spin should mostly decay within a second, was " + spin);
+        assertTrue(spin >= 0f, "damping must never reverse the spin, was " + spin);
+    }
+
+    @Test
+    void dampingStopsButNeverReversesTheSpinInVeryThickAir() {
+        Ship ship = spinUp(0f);
+
+        ship.setTurnInput(0f);
+        world.fixedAirDensity = 1000f;
+        world.run(PhysicsWorld.TIME_STEP);
         assertEquals(0f, ship.getBody().getAngularVelocity(), 0.01f);
     }
 
@@ -140,6 +192,27 @@ class ShipFlightTest {
             assertTrue(game.getShip() != crashed);
             assertEquals(FlightState.LANDED, game.getShip().getState());
             assertEquals(1, game.getBox2DWorld().getBodyCount() - game.getPlanets().size, "old ship body destroyed");
+        } finally {
+            game.dispose();
+        }
+    }
+
+    /**
+     * Regression: the hull is a circle, and the other planet's pull plus the slightly
+     * curved pad made a landed ship roll away slowly. Landing locks the rotation.
+     */
+    @Test
+    void landedShipDoesNotRollAndFallsAsleep() {
+        GameWorld game = new GameWorld(1L);
+        try {
+            for (int i = 0; i < 60; i++) game.update(PhysicsWorld.TIME_STEP);
+            Body body = game.getShip().getBody();
+            float angleAfterLanding = body.getAngle();
+
+            for (int i = 0; i < 600; i++) game.update(PhysicsWorld.TIME_STEP);
+            float rolledDegrees = Math.abs(body.getAngle() - angleAfterLanding) * MathUtils.radDeg;
+            assertTrue(rolledDegrees < 0.1f, "rolled " + rolledDegrees + "° in 10 s");
+            assertFalse(body.isAwake(), "a resting ship should fall asleep");
         } finally {
             game.dispose();
         }
