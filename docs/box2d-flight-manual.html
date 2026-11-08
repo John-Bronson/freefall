@@ -728,7 +728,7 @@ viewport = <span class="k">new</span> ExtendViewport(
           <thead><tr><th>Method</th><th>Effect</th><th>Real-world feel</th><th>Freefall uses it for</th></tr></thead>
           <tbody>
             <tr><td><code>applyForceToCenter</code></td><td>Continuous push spread over one step. Acceleration = F ÷ m.</td><td>An engine burning</td><td>Main engine, booster, gravity</td></tr>
-            <tr><td><code>applyTorque</code></td><td>Continuous twist. Angular acceleration = τ ÷ I.</td><td>Attitude thrusters</td><td>Turning and holding attitude</td></tr>
+            <tr><td><code>applyTorque</code></td><td>Continuous twist. Angular acceleration = τ ÷ I.</td><td>Attitude thrusters, air resistance</td><td>RCS turns and spin damping</td></tr>
             <tr><td><code>applyLinearImpulse</code></td><td>Instant change in momentum. Velocity changes by impulse ÷ m.</td><td>A kick, an explosion</td><td>Not yet</td></tr>
             <tr><td><code>setLinearVelocity</code></td><td>Overwrites velocity. Ignores mass and contacts.</td><td>Cheating physics</td><td>Only tests, to set up a scenario</td></tr>
             <tr><td><code>setTransform</code></td><td>Teleports to a position and angle.</td><td>Cheating harder</td><td>Never</td></tr>
@@ -753,16 +753,30 @@ body.applyForceToCenter(force, <span class="k">true</span>);</code></pre>
       <p>Gravity is the opposite case. It's an <strong>acceleration</strong>, the same for every mass, so <code>PlanetaryGravity</code> multiplies by mass before calling <code>applyForceToCenter</code> (section 6).</p>
 
       <h3>Attitude control with torque</h3>
-      <p>Freefall wants arcade-feeling rotation: hold a key and the ship turns at a steady rate, let go and it stops. Rather than teleport the angle, the ship computes the torque that brings its spin toward the requested rate and caps it:</p>
-<pre><code><span class="k">float</span> targetRate = turnInput * MAX_TURN_RATE;
+      <p>Rotation comes from two separate torques: one for the pilot and one for the environment. The pilot's <strong>RCS thrusters</strong> fire only while a rotate key is held. The <strong>air</strong> always resists spinning, in proportion to its density. In vacuum, a ship that's spinning keeps spinning until the pilot counter-steers. In thick air the spin dies away on its own.</p>
+      <p>While steering, the RCS works out the torque that brings the spin toward the requested rate, capped so the change isn't instant. With no input it returns without applying any torque:</p>
+<pre><code><span class="k">if</span> (turnInput == 0f) <span class="k">return</span>;   <span class="c">// thrusters off: the ship coasts</span>
+
+<span class="k">float</span> targetRate = turnInput * MAX_TURN_RATE;
 <span class="k">float</span> neededAcceleration = (targetRate - body.getAngularVelocity()) / dt;
 <span class="k">float</span> angularAcceleration = MathUtils.clamp(neededAcceleration,
     -MAX_TURN_ACCELERATION, MAX_TURN_ACCELERATION);
 
 <span class="c">// Torque = I × α, the rotational twin of F = m × a.</span>
-body.<span class="hl">applyTorque</span>(body.getInertia() * angularAcceleration, turnInput != 0f);</code></pre>
+body.<span class="hl">applyTorque</span>(body.getInertia() * angularAcceleration, <span class="k">true</span>);</code></pre>
       <p class="file">world/Ship.applyAttitudeControl()</p>
-      <p>With no input, the target rate is zero, so the controller holds attitude. It also cancels any spin from scraping the terrain. The old approach used <code>setTransform</code> plus <code>fixedRotation = true</code>. That skips collision response, and it would tear jointed parts (landing legs) away from the hull, because joints can't follow a teleport.</p>
+      <p>Counter-steering needs no extra code. Pressing the opposite key reverses the target rate, so the controller brakes at full turn acceleration.</p>
+      <p>Spin damping is the rotational twin of linear drag. It's a torque against the spin, scaled by air density, and it runs every step whether or not the pilot is steering:</p>
+<pre><code><span class="c">// Capped at 1, so one step can at most stop the spin, never reverse it.</span>
+<span class="k">float</span> fractionToReduce = Math.min(<span class="hl">SPIN_DAMPING * airDensity * dt</span>, 1f);
+<span class="k">float</span> angularAcceleration = -fractionToReduce * body.getAngularVelocity() / dt;
+
+body.applyTorque(body.getInertia() * angularAcceleration, <span class="k">false</span>);</code></pre>
+      <p class="file">world/Ship.applySpinDamping()</p>
+      <p><code>SPIN_DAMPING</code> is a rate, 3 per second at surface density (1), so a spin's time constant is <code>1 / (SPIN_DAMPING × density)</code>: a third of a second near the ground, and no damping at all in vacuum. Multiplying by <code>getInertia()</code> keeps the constant independent of the ship's mass. The density isn't stored on the ship. <code>GameWorld</code> computes it from the ship's position every step and passes it in as <code>ship.beforeStep(dt, airDensity)</code>, the same way <code>dt</code> arrives.</p>
+      <p>Why not Box2D's built-in <code>angularDamping</code>? It's a single fixed number that applies everywhere, so it can't tell vacuum from atmosphere.</p>
+      <p>Both torques add up, so in thick air the top turn rate is where the RCS's acceleration balances the damping: <code>MAX_TURN_ACCELERATION = SPIN_DAMPING × density × ω</code>. Above that density, the ship can't reach <code>MAX_TURN_RATE</code>.</p>
+      <p>One stand-in: the hull is a circle, and without an attitude hold nothing stopped it rolling off a landing pad. While the ship is LANDED, <code>Ship.setState</code> calls <code>body.setFixedRotation(true)</code>, which locks the angle and zeroes the spin. Landing legs with friction will make this unnecessary. Turning is never done with <code>setTransform</code>: a teleport skips collision response, and it would tear jointed parts such as landing legs away from the hull, because joints can't follow it.</p>
 
       <div class="check">
         <h3>Check yourself</h3>
@@ -1033,7 +1047,8 @@ ship.<span class="hl">onGroundContactBegin</span>(planet, speed);</code></pre>
       <ul>
         <li><strong>Gravity: <code>false</code>.</strong> A ship resting on a pad is in balance. Gravity shouldn't keep it awake, so it falls asleep naturally about half a second after landing.</li>
         <li><strong>Engines: <code>true</code>.</strong> Thrusting must wake a parked ship, or it could never take off.</li>
-        <li><strong>Attitude control: only while steering.</strong> Holding attitude on a sleeping ship would otherwise keep it awake forever.</li>
+        <li><strong>RCS: <code>true</code>.</strong> The thrusters only fire while the pilot steers, and steering must wake a parked ship.</li>
+        <li><strong>Spin damping: <code>false</code>.</strong> It runs every step, so waking would keep a resting ship awake forever. A sleeping ship isn't spinning, so there's nothing to damp.</li>
       </ul>
       <p>A collision with an awake body also wakes a sleeper. In the debug view (section 10), sleeping bodies are drawn in a dimmer color. Land and watch the ship change color.</p>
     </section>
@@ -1093,7 +1108,7 @@ ship.<span class="hl">onGroundContactBegin</span>(planet, speed);</code></pre>
     Box2D.init();
 }</code></pre>
       <p class="file">core/src/test/java/…/world/ShipFlightTest.java</p>
-      <p>The tests fly the real ship. A gentle upright touchdown lands and then falls asleep. A fast or tilted one crashes. Thrust wakes a parked ship. Attitude control reaches its turn rate and holds. Restart destroys the old body. Because the step is fixed, every run gives exactly the same result. Run them with <code>./gradlew test</code>.</p>
+      <p>The tests fly the real ship. A gentle upright touchdown lands and then falls asleep. A fast or tilted one crashes. A landed ship doesn't roll and falls asleep. In vacuum the RCS reaches its turn rate, the spin coasts after release, and counter-steering stops it. In air the spin dies away, and very thick air stops it without ever reversing it. Restart destroys the old body. The rotation tests pass the air density in explicitly, so they don't depend on where the ship is. Because the step is fixed, every run gives exactly the same result. Run them with <code>./gradlew test</code>.</p>
     </section>
 
     <!-- 13 -->

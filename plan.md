@@ -109,25 +109,25 @@ Where the density comes from: don't store it. It's derived from the ship's posit
 
 - [x] Add `GameWorld.airDensityAt(Vector2)`, which uses `nearestPlanetTo` and `Planet.airDensityAt`
 - [x] In `GameWorld.beforeStep`, compute the density at the ship's raw body position **every physics step** and pass it in: `ship.beforeStep(dt, airDensity)`. `ShipFlightTest` passes its planet's density too.
-- [ ] RCS: in `applyAttitudeControl`, apply the rate-controller torque only when `steering` (`turnInput != 0`). With no input, return without applying torque. Keep the wake flag rule (wake only while steering).
-- [ ] Air damping: add `applySpinDamping(dt, airDensity)` beside the RCS, called from `beforeStep` every step whether or not the pilot is steering
-    - [ ] Add a `SPIN_DAMPING` constant in 1/s at the reference density (`SURFACE_AIR_DENSITY` = 1). The spin's time constant is `1 / (SPIN_DAMPING × density)`. Start around 3/s (a third of a second at the surface) and tune.
-    - [ ] Multiply by `body.getInertia()` so the constant is a rate, independent of the ship's mass
-    - [ ] Clamp so one step can never reverse the spin: `SPIN_DAMPING × density × dt ≤ 1` (same idea as the drag clamp below)
-    - [ ] Apply with `wake = false`, so damping never keeps a sleeping ship awake
-- [ ] Check that the RCS can still reach full turn rate in the thickest air: at top rate the damping is `SPIN_DAMPING × density × MAX_TURN_RATE`, which must stay below `MAX_TURN_ACCELERATION`. With 3/s that's 3 × 2π against 4 × 2π, so it fits but leaves little spare acceleration for spinning up. Much above 4/s, the ship can't reach full turn rate near the ground.
-- [ ] Consider a gentler `MAX_TURN_ACCELERATION`. A quarter second to full rate may feel twitchy now that the pilot does all the braking in vacuum.
+- [x] RCS: in `applyAttitudeControl`, apply the rate-controller torque only when `steering` (`turnInput != 0`). With no input, return without applying torque. Keep the wake flag rule (wake only while steering).
+- [x] Air damping: add `applySpinDamping(dt, airDensity)` beside the RCS, called from `beforeStep` every step whether or not the pilot is steering
+    - [x] Add a `SPIN_DAMPING` constant in 1/s at the reference density (`SURFACE_AIR_DENSITY` = 1). The spin's time constant is `1 / (SPIN_DAMPING × density)`. Start around 3/s (a third of a second at the surface) and tune.
+    - [x] Multiply by `body.getInertia()` so the constant is a rate, independent of the ship's mass
+    - [x] Clamp so one step can never reverse the spin: `SPIN_DAMPING × density × dt ≤ 1` (same idea as the drag clamp below)
+    - [x] Apply with `wake = false`, so damping never keeps a sleeping ship awake
+- [ ] Check that the RCS can still reach full turn rate in the thickest air: at top rate the damping is `SPIN_DAMPING × density × MAX_TURN_RATE`, which must stay below `MAX_TURN_ACCELERATION`. With 3/s that's 3 × 2π against 4 × 2π, so it fits but leaves little spare acceleration for spinning up. Much above 4/s, the ship can't reach full turn rate near the ground. *Now that `MAX_TURN_ACCELERATION` is 0.5 × 2π, it no longer fits: at surface density the RCS (π rad/s²) balances the damping (3 × ω) at about 1 rad/s (60°/s), not 360°/s. Decide whether that slowdown in thick air is the feel you want, or lower `SPIN_DAMPING`.*
+- [x] Consider a gentler `MAX_TURN_ACCELERATION`. A quarter second to full rate may feel twitchy now that the pilot does all the braking in vacuum. *Done 2026-11-08: lowered to 0.5 × 2π (2 s to full rate).*
 - [ ] Add a spin-rate readout (deg/s) to the HUD next to the heading, negated so clockwise is positive like the heading. It makes manual braking much easier to tune.
-- [ ] Edge case, on the ground: the old controller also cancelled spin from scraping the terrain, and the hull is a circle, which can roll. Check that touchdowns with sideways speed still settle (surface density is 1, so damping is strongest there) and that `restingShipStaysLandedWithoutFlickering` still passes. Landing legs (Phase 4) fix this for good, since feet with friction stop the roll.
-- [ ] Edge case: the damping is exponential, so a spin never quite reaches zero. Box2D's sleep should absorb the tail on the ground; in flight a slow residual drift is expected.
+- [x] Edge case, on the ground: the old controller also cancelled spin from scraping the terrain, and the hull is a circle, which can roll. Check that touchdowns with sideways speed still settle (surface density is 1, so damping is strongest there) and that `restingShipStaysLandedWithoutFlickering` still passes. Landing legs (Phase 4) fix this for good, since feet with friction stop the roll. *Done: the round hull did roll off the pad, so `setState` locks rotation (`setFixedRotation`) while LANDED, which also zeroes the spin. Covered by `landedShipDoesNotRollAndFallsAsleep`. Remove the lock when the legs land.*
+- [x] Edge case: the damping is exponential, so a spin never quite reaches zero. Box2D's sleep should absorb the tail on the ground; in flight a slow residual drift is expected. *On the ground the LANDED rotation lock zeroes the spin outright.*
 - [ ] Later: when drag and heat also need density, group the step inputs into a `record Environment(float airDensity, ...)` and pass that instead
-- [ ] Update `ShipFlightTest`: `attitudeControlTurnsAtTheRequestedRateThenHolds` expects the spin to stop within 0.5 s at 30 m, which no longer holds. Replace it with explicit-density tests: in vacuum (0) the spin coasts after release, in atmosphere (1) it decays quickly, and a counter-steer stops it in vacuum.
-- [ ] Update `docs/box2d-flight-manual.html`: the "Attitude control with torque" section and the `applyTorque` table row describe attitude hold with no input
+- [x] Update `ShipFlightTest`: `attitudeControlTurnsAtTheRequestedRateThenHolds` expects the spin to stop within 0.5 s at 30 m, which no longer holds. Replace it with explicit-density tests: in vacuum (0) the spin coasts after release, in atmosphere (1) it decays quickly, and a counter-steer stops it in vacuum.
+- [x] Update `docs/box2d-flight-manual.html`: the "Attitude control with torque" section and the `applyTorque` table row describe attitude hold with no input
 - [ ] Test: Does flipping in vacuum feel deliberate rather than sluggish? Is the change in handling during descent noticeable but not jarring?
 
 #### Later: hold-attitude button
 
-A pilot aid mapped to its own button (an "SAS", in the style of Kerbal Space Program). While it's active and there's no turn input, the RCS targets a rate of 0, which is today's behavior. It brakes at the full turn acceleration in any air.
+A pilot aid mapped to its own button (an "SAS", in the style of Kerbal Space Program). While it's active and there's no turn input, the RCS targets a rate of 0, which was the behavior before RCS turns. It brakes at the full turn acceleration in any air.
 
 - [ ] Add a `HOLD_ATTITUDE` `InputAction` with keyboard and controller bindings, plus a `Ship.setHoldAttitude(boolean)` intent beside `setTurnInput`
 - [ ] Decide between holding the button and toggling it. A toggle needs a HUD indicator.
