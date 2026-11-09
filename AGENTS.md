@@ -39,7 +39,7 @@ Freefall is a Lunar Lander-style game built with LibGDX (1.14.0) and Java 21. Th
 
 **Units:** SI everywhere — meters, kilograms, seconds, radians. No pixels-per-meter conversion in game code; the camera maps meters to the screen. Ship local +Y is the nose.
 
-**Coordinate system:** Barycenter at origin (0,0). Planets at (−240, 0) and (240, 0) m, terrain radius 60–78 m, landing zones at 69 m, atmosphere 108 m. The ship spawns landed on planet 1's first landing zone.
+**Coordinate system:** Barycenter at origin (0,0). The two planets sit on the x-axis at ±`GameWorld.PLANET_DISTANCE_FROM_ORIGIN`. Terrain, landing-zone and atmosphere radii are constants in `Planet` (all tuned, so read them there rather than quoting numbers). The ship spawns landed on planet 1's first landing zone.
 
 **Controls:** Up thrust, Left/Right rotate, Space booster, R restart, L toggle camera follow, WASD pan and Z/X zoom (free camera only), ' debug overlay, Q quit.
 

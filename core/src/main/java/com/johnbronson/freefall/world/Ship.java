@@ -60,16 +60,19 @@ public final class Ship {
 
     // Atmospheric drag (quadratic: the slowdown grows with speed²).
     /**
-     * Top speed of a ship falling with its engine off, at the reference density. Tune
-     * this one. Keep it well above {@link #MAX_LANDING_SPEED}, or the pilot can drop
-     * onto a pad without braking.
+     * Top speed of a ship falling with its engine off, at the landing zones
+     * ({@link Planet#SURFACE_AIR_DENSITY}). Tune this one. Keep it well above
+     * {@link #MAX_LANDING_SPEED}, or the pilot can drop onto a pad without braking.
      */
     static final float SURFACE_TERMINAL_SPEED = 30f;
     /**
-     * Drag strength, in 1/m. Derived from {@link #SURFACE_TERMINAL_SPEED}: the ship stops
-     * speeding up when drag equals gravity, DRAG × density × v² = g.
+     * Drag strength per unit of density, in 1/m. Derived so a falling ship at the landing
+     * zones tops out at {@link #SURFACE_TERMINAL_SPEED}: it stops speeding up when drag
+     * equals gravity, DRAG × density × v² = g. Tuning the air density or gravity keeps
+     * that terminal speed; only the drag strength changes.
      */
-    static final float DRAG = Planet.SURFACE_GRAVITY / (SURFACE_TERMINAL_SPEED * SURFACE_TERMINAL_SPEED);
+    static final float DRAG = Planet.SURFACE_GRAVITY
+        / (Planet.SURFACE_AIR_DENSITY * SURFACE_TERMINAL_SPEED * SURFACE_TERMINAL_SPEED);
 
     // Landing rules.
     public static final float MAX_LANDING_SPEED = 10f;

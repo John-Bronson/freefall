@@ -86,7 +86,7 @@ Box2D's world gravity is zero. `PlanetaryGravity` applies Newtonian gravity towa
 - [x] Add fuel counter to HUD
 - [x] Thrust consumes fuel
 - [x] Detect when ship enters atmosphere zone (`Planet.isInAtmosphere`, used by the camera and the HUD)
-- [x] Apply atmospheric drag when in atmosphere (slows ship down). *Quadratic, `Ship.applyDrag`. `DRAG` is derived from `SURFACE_TERMINAL_SPEED` (30 m/s); tune by playing.*
+- [x] Apply atmospheric drag when in atmosphere (slows ship down). *Quadratic, `Ship.applyDrag`. `DRAG` is derived from `SURFACE_TERMINAL_SPEED`; tune by playing.*
 - [ ] Calculate heat buildup based on velocity and angle relative to direction of travel
 - [ ] Heat shield protection: reduce heat if ship's heat shield is facing the velocity vector
 - [ ] Add heat meter to HUD

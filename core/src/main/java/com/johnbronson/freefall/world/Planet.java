@@ -19,10 +19,10 @@ import com.johnbronson.freefall.physics.FixtureRole;
 public final class Planet {
 
     // All sizes are meters from the planet's center.
-    public static final float MIN_TERRAIN_RADIUS = 120f;
-    public static final float MAX_TERRAIN_RADIUS = 160f;
-    public static final float LANDING_ZONE_RADIUS = 140f;
-    public static final float ATMOSPHERE_RADIUS = 220f;
+    public static final float MIN_TERRAIN_RADIUS = 240f;
+    public static final float MAX_TERRAIN_RADIUS = 320f;
+    public static final float LANDING_ZONE_RADIUS = 280f;
+    public static final float ATMOSPHERE_RADIUS = 440f;
 
     /**
      * Gravitational acceleration at and below {@link #GRAVITY_PLATEAU_RADIUS}, so everywhere
@@ -48,7 +48,7 @@ public final class Planet {
      * A relative scale: 1 is the reference atmosphere that ship drag is tuned against.
      * Raise it for a thicker atmosphere, lower it for a thinner one.
      */
-    public static final float SURFACE_AIR_DENSITY = 1f;
+    public static final float SURFACE_AIR_DENSITY = 2f;
 
     /**
      * Shape of the air density curve. 1 = linear. Higher values keep the upper air thin

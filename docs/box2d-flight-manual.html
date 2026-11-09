@@ -790,12 +790,8 @@ body.applyTorque(body.getInertia() * angularAcceleration, <span class="k">false<
 force.set(velocity).scl(-fractionToReduce * body.getMass() / dt);
 body.applyForceToCenter(force, <span class="k">false</span>);</code></pre>
       <p class="file">world/Ship.applyDrag()</p>
-      <p><code>DRAG</code> isn't tuned directly. It's derived from <code>SURFACE_TERMINAL_SPEED</code>, the top speed of a ship falling with its engine off at surface density. A falling ship stops speeding up when drag equals gravity, <code>DRAG × density × v² = g</code>, so <code>DRAG = SURFACE_GRAVITY / SURFACE_TERMINAL_SPEED²</code>. Keep the terminal speed well above <code>MAX_LANDING_SPEED</code>, or the pilot could fall onto a pad without braking.</p>
-      <div class="calc">
-        <div><span class="lbl">Terminal speed</span><span class="val">30 <small>m/s</small></span><span class="note">SURFACE_TERMINAL_SPEED</span></div>
-        <div><span class="lbl">DRAG</span><span class="val">0.0244 <small>1/m</small></span><span class="note">22 ÷ 30²</span></div>
-        <div><span class="lbl">Drag at 10 m/s</span><span class="val">2.4 <small>m/s²</small></span><span class="note">0.0244 × 1 × 10²</span></div>
-      </div>
+      <p><code>DRAG</code> isn't tuned directly. It's derived from <code>SURFACE_TERMINAL_SPEED</code>, the top speed of a ship falling with its engine off at the landing zones. A falling ship stops speeding up when drag equals gravity, <code>DRAG × density × v² = g</code>, so <code>DRAG = SURFACE_GRAVITY / (SURFACE_AIR_DENSITY × SURFACE_TERMINAL_SPEED²)</code>. Tuning gravity or air density then keeps the terminal speed, and only the drag strength moves. Keep the terminal speed well above <code>MAX_LANDING_SPEED</code>, or the pilot could fall onto a pad without braking.</p>
+      <p>A handy way to judge the feel: at the landing zones, drag as a fraction of gravity is <code>(v / SURFACE_TERMINAL_SPEED)²</code>. At half the terminal speed, drag is a quarter of gravity.</p>
       <p>Like spin damping, the density comes in through <code>beforeStep(dt, airDensity)</code>. Box2D's <code>linearDamping</code> isn't used for the same reason as <code>angularDamping</code>: it applies everywhere and can't tell vacuum from atmosphere. It's also linear in speed, not quadratic.</p>
 
       <div class="check">
