@@ -727,7 +727,7 @@ viewport = <span class="k">new</span> ExtendViewport(
         <table>
           <thead><tr><th>Method</th><th>Effect</th><th>Real-world feel</th><th>Freefall uses it for</th></tr></thead>
           <tbody>
-            <tr><td><code>applyForceToCenter</code></td><td>Continuous push spread over one step. Acceleration = F ÷ m.</td><td>An engine burning</td><td>Main engine, booster, gravity</td></tr>
+            <tr><td><code>applyForceToCenter</code></td><td>Continuous push spread over one step. Acceleration = F ÷ m.</td><td>An engine burning</td><td>Main engine, booster, gravity, drag</td></tr>
             <tr><td><code>applyTorque</code></td><td>Continuous twist. Angular acceleration = τ ÷ I.</td><td>Attitude thrusters, air resistance</td><td>RCS turns and spin damping</td></tr>
             <tr><td><code>applyLinearImpulse</code></td><td>Instant change in momentum. Velocity changes by impulse ÷ m.</td><td>A kick, an explosion</td><td>Not yet</td></tr>
             <tr><td><code>setLinearVelocity</code></td><td>Overwrites velocity. Ignores mass and contacts.</td><td>Cheating physics</td><td>Only tests, to set up a scenario</td></tr>
@@ -777,6 +777,26 @@ body.applyTorque(body.getInertia() * angularAcceleration, <span class="k">false<
       <p>Why not Box2D's built-in <code>angularDamping</code>? It's a single fixed number that applies everywhere, so it can't tell vacuum from atmosphere.</p>
       <p>Both torques add up, so in thick air the top turn rate is where the RCS's acceleration balances the damping: <code>MAX_TURN_ACCELERATION = SPIN_DAMPING × density × ω</code>. Above that density, the ship can't reach <code>MAX_TURN_RATE</code>.</p>
       <p>One stand-in: the hull is a circle, and without an attitude hold nothing stopped it rolling off a landing pad. While the ship is LANDED, <code>Ship.setState</code> calls <code>body.setFixedRotation(true)</code>, which locks the angle and zeroes the spin. Landing legs with friction will make this unnecessary. Turning is never done with <code>setTransform</code>: a teleport skips collision response, and it would tear jointed parts such as landing legs away from the hull, because joints can't follow it.</p>
+
+      <h3>Atmospheric drag</h3>
+      <p>Drag is the linear twin of spin damping. It removes a fraction of the velocity each step, so the velocity arrow gets shorter without turning. The difference is one extra factor of speed in that fraction, which makes drag <strong>quadratic</strong>: twice the speed loses four times as much.</p>
+<pre><code><span class="k">Vector2</span> velocity = body.getLinearVelocity();   <span class="c">// reused by Box2D: read, don't keep</span>
+<span class="k">float</span> speed = velocity.len();
+
+<span class="c">// Capped at 1, so one step can at most stop the ship, never reverse it.</span>
+<span class="k">float</span> fractionToReduce = Math.min(<span class="hl">DRAG * airDensity * speed * dt</span>, 1f);
+
+<span class="c">// Δv = −fraction × velocity, and F = m × Δv / dt.</span>
+force.set(velocity).scl(-fractionToReduce * body.getMass() / dt);
+body.applyForceToCenter(force, <span class="k">false</span>);</code></pre>
+      <p class="file">world/Ship.applyDrag()</p>
+      <p><code>DRAG</code> isn't tuned directly. It's derived from <code>SURFACE_TERMINAL_SPEED</code>, the top speed of a ship falling with its engine off at surface density. A falling ship stops speeding up when drag equals gravity, <code>DRAG × density × v² = g</code>, so <code>DRAG = SURFACE_GRAVITY / SURFACE_TERMINAL_SPEED²</code>. Keep the terminal speed well above <code>MAX_LANDING_SPEED</code>, or the pilot could fall onto a pad without braking.</p>
+      <div class="calc">
+        <div><span class="lbl">Terminal speed</span><span class="val">30 <small>m/s</small></span><span class="note">SURFACE_TERMINAL_SPEED</span></div>
+        <div><span class="lbl">DRAG</span><span class="val">0.0244 <small>1/m</small></span><span class="note">22 ÷ 30²</span></div>
+        <div><span class="lbl">Drag at 10 m/s</span><span class="val">2.4 <small>m/s²</small></span><span class="note">0.0244 × 1 × 10²</span></div>
+      </div>
+      <p>Like spin damping, the density comes in through <code>beforeStep(dt, airDensity)</code>. Box2D's <code>linearDamping</code> isn't used for the same reason as <code>angularDamping</code>: it applies everywhere and can't tell vacuum from atmosphere. It's also linear in speed, not quadratic.</p>
 
       <div class="check">
         <h3>Check yourself</h3>
@@ -1049,6 +1069,7 @@ ship.<span class="hl">onGroundContactBegin</span>(planet, speed);</code></pre>
         <li><strong>Engines: <code>true</code>.</strong> Thrusting must wake a parked ship, or it could never take off.</li>
         <li><strong>RCS: <code>true</code>.</strong> The thrusters only fire while the pilot steers, and steering must wake a parked ship.</li>
         <li><strong>Spin damping: <code>false</code>.</strong> It runs every step, so waking would keep a resting ship awake forever. A sleeping ship isn't spinning, so there's nothing to damp.</li>
+        <li><strong>Drag: <code>false</code>.</strong> Same reason. A sleeping ship isn't moving, so the drag on it is already zero.</li>
       </ul>
       <p>A collision with an awake body also wakes a sleeper. In the debug view (section 10), sleeping bodies are drawn in a dimmer color. Land and watch the ship change color.</p>
     </section>

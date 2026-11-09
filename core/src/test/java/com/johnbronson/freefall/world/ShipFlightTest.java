@@ -170,6 +170,67 @@ class ShipFlightTest {
         assertTrue(spin >= 0f, "damping must never reverse the spin, was " + spin);
     }
 
+    /**
+     * Launches the ship straight up (away from the planet, so it never hits the ground)
+     * at the given speed and air density, without gravity.
+     */
+    private Ship launch(float airDensity, float speed) {
+        world = new TestWorld();
+        world.fixedAirDensity = airDensity;
+        world.gravityOn = false;
+        return world.placeShip(10f, 0f, -speed);
+    }
+
+    @Test
+    void noDragInVacuum() {
+        float speed = Ship.SURFACE_TERMINAL_SPEED;
+        Ship ship = launch(0f, speed);
+
+        world.run(1f);
+        assertEquals(speed, ship.getBody().getLinearVelocity().len(), 0.01f);
+    }
+
+    @Test
+    void dragMatchesGravityAtTerminalSpeed() {
+        float speed = Ship.SURFACE_TERMINAL_SPEED;
+        Ship ship = launch(Planet.SURFACE_AIR_DENSITY, speed);
+
+        world.run(PhysicsWorld.TIME_STEP);
+        float deceleration = (speed - ship.getBody().getLinearVelocity().len()) / PhysicsWorld.TIME_STEP;
+        assertEquals(Planet.SURFACE_GRAVITY, deceleration, 0.02f * Planet.SURFACE_GRAVITY);
+    }
+
+    @Test
+    void quadraticDragSlowsTheShipAsPredicted() {
+        float density = Planet.SURFACE_AIR_DENSITY;
+        float startSpeed = 2f * Ship.SURFACE_TERMINAL_SPEED;
+        Ship ship = launch(density, startSpeed);
+        Vector2 startDirection = ship.getBody().getLinearVelocity().cpy().nor();
+
+        float t = 1f;
+        world.run(t);
+
+        // Exact solution of dv/dt = −DRAG × density × v²: v(t) = v0 / (1 + DRAG × density × v0 × t).
+        float expected = startSpeed / (1f + Ship.DRAG * density * startSpeed * t);
+        Vector2 velocity = ship.getBody().getLinearVelocity();
+        assertEquals(expected, velocity.len(), 0.01f * expected);
+        // Drag only shortens the velocity arrow. It never turns it.
+        assertEquals(1f, velocity.cpy().nor().dot(startDirection), 1e-4f);
+    }
+
+    @Test
+    void dragStopsButNeverReversesTheShipInVeryThickAir() {
+        float speed = Ship.SURFACE_TERMINAL_SPEED;
+        Ship ship = launch(0f, speed);
+        Vector2 startDirection = ship.getBody().getLinearVelocity().cpy().nor();
+
+        // Thick enough that one step's drag would overshoot tenfold without the cap.
+        world.fixedAirDensity = 10f / (Ship.DRAG * speed * PhysicsWorld.TIME_STEP);
+        world.run(PhysicsWorld.TIME_STEP);
+        float forwardSpeed = ship.getBody().getLinearVelocity().dot(startDirection);
+        assertEquals(0f, forwardSpeed, 0.01f);
+    }
+
     @Test
     void dampingStopsButNeverReversesTheSpinInVeryThickAir() {
         Ship ship = spinUp(0f);

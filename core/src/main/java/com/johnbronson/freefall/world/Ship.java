@@ -35,10 +35,10 @@ public final class Ship {
 
     // Engines. Thrust is a force in newtons, so a heavier ship accelerates less.
     // 25 kN on 1000 kg is 25 m/s², about 1.4× gravity at landing-zone height.
-    public static final float MAIN_ENGINE_THRUST = 22_000f;
+    public static final float MAIN_ENGINE_THRUST = 28_000f;
     /** Seconds of full-throttle burn. */
     public static final float MAIN_FUEL_CAPACITY = 500f;
-    public static final float BOOSTER_THRUST = 150_000f;
+    public static final float BOOSTER_THRUST = 15_000f;
     public static final float BOOSTER_BURN_TIME = 2f;
     public static final int BOOSTER_CHARGES = 1;
 
@@ -57,6 +57,19 @@ public final class Ship {
      * The spin's time constant is 1 / (SPIN_DAMPING × density).
      */
     static final float SPIN_DAMPING = 3f;
+
+    // Atmospheric drag (quadratic: the slowdown grows with speed²).
+    /**
+     * Top speed of a ship falling with its engine off, at the reference density. Tune
+     * this one. Keep it well above {@link #MAX_LANDING_SPEED}, or the pilot can drop
+     * onto a pad without braking.
+     */
+    static final float SURFACE_TERMINAL_SPEED = 30f;
+    /**
+     * Drag strength, in 1/m. Derived from {@link #SURFACE_TERMINAL_SPEED}: the ship stops
+     * speeding up when drag equals gravity, DRAG × density × v² = g.
+     */
+    static final float DRAG = Planet.SURFACE_GRAVITY / (SURFACE_TERMINAL_SPEED * SURFACE_TERMINAL_SPEED);
 
     // Landing rules.
     public static final float MAX_LANDING_SPEED = 10f;
@@ -158,6 +171,7 @@ public final class Ship {
         applyBooster(dt);
         applyAttitudeControl(dt);
         applySpinDamping(dt, airDensity);
+        applyDrag(dt, airDensity);
     }
 
     private void applyMainEngine(float dt) {
@@ -227,6 +241,32 @@ public final class Ship {
         // wake = false: this runs every step, so waking would keep a resting ship
         // awake forever. A sleeping ship isn't spinning, so there's nothing to damp.
         body.applyTorque(body.getInertia() * angularAcceleration, false);
+    }
+
+    /**
+     * Air resistance to moving: a force that always points against the velocity. It's
+     * quadratic, so twice the speed means four times the drag. It's the linear twin of
+     * {@link #applySpinDamping}, with one extra factor of speed.
+     */
+    private void applyDrag(float dt, float airDensity) {
+        // Box2D reuses this Vector2 for every call. Read it, but never keep or change it.
+        Vector2 velocity = body.getLinearVelocity();
+        // Speed is the length of the velocity arrow: sqrt(vx² + vy²).
+        float speed = velocity.len();
+
+        // The fraction of the velocity to remove this step. The `speed` factor makes it
+        // quadratic: the speed removed is fraction × speed, which grows with speed².
+        // Capped at 1, so one step can at most stop the ship, never reverse it.
+        float fractionToReduce = Math.min(DRAG * airDensity * speed * dt, 1f);
+
+        // The velocity change we want is −fraction × velocity: the same arrow, shrunk.
+        // Box2D only takes forces, so run F = m × a backwards: a = Δv / dt.
+        // `force` is a reused scratch field, so this allocates nothing. set() copies the
+        // numbers in, and scl() scales the vector in place and returns it.
+        force.set(velocity).scl(-fractionToReduce * body.getMass() / dt);
+
+        // wake = false, for the same reason as spin damping.
+        body.applyForceToCenter(force, false);
     }
 
     /** Game rules. Call after every world step, when contacts for the step are known. */
