@@ -18,7 +18,9 @@ final class ShipRenderer {
 
     // The triangle's base is level with the bottom of the physics circle, so the
     // ship doesn't appear to hover when it rests on the ground.
-    private static final float NOSE_Y = 0.9f;
+    // Package-private (no `private`), so TrajectoryRenderer can start its line just
+    // past the nose.
+    static final float NOSE_Y = 0.9f;
     private static final float BASE_Y = -Ship.HULL_RADIUS;
     private static final float HALF_WIDTH = 0.6f;
 

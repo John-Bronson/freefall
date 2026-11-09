@@ -780,16 +780,20 @@ body.applyTorque(body.getInertia() * angularAcceleration, <span class="k">false<
 
       <h3>Atmospheric drag</h3>
       <p>Drag is the linear twin of spin damping. It removes a fraction of the velocity each step, so the velocity arrow gets shorter without turning. The difference is one extra factor of speed in that fraction, which makes drag <strong>quadratic</strong>: twice the speed loses four times as much.</p>
-<pre><code><span class="k">Vector2</span> velocity = body.getLinearVelocity();   <span class="c">// reused by Box2D: read, don't keep</span>
-<span class="k">float</span> speed = velocity.len();
+<pre><code><span class="c">// The pure part: how much one step of drag changes the velocity.</span>
+<span class="k">static</span> Vector2 dragDeltaV(Vector2 velocity, <span class="k">float</span> airDensity, <span class="k">float</span> dt, Vector2 out) {
+    <span class="k">float</span> speed = velocity.len();
+    <span class="c">// Capped at 1, so one step can at most stop the ship, never reverse it.</span>
+    <span class="k">float</span> fractionToReduce = Math.min(<span class="hl">DRAG * airDensity * speed * dt</span>, 1f);
+    <span class="k">return</span> out.set(velocity).scl(-fractionToReduce);   <span class="c">// Δv = −fraction × velocity</span>
+}
 
-<span class="c">// Capped at 1, so one step can at most stop the ship, never reverse it.</span>
-<span class="k">float</span> fractionToReduce = Math.min(<span class="hl">DRAG * airDensity * speed * dt</span>, 1f);
-
-<span class="c">// Δv = −fraction × velocity, and F = m × Δv / dt.</span>
-force.set(velocity).scl(-fractionToReduce * body.getMass() / dt);
+<span class="c">// The Box2D part: F = m × Δv / dt.</span>
+<span class="k">Vector2</span> velocity = body.getLinearVelocity();   <span class="c">// reused by Box2D: read, don't keep</span>
+dragDeltaV(velocity, airDensity, dt, force).scl(body.getMass() / dt);
 body.applyForceToCenter(force, <span class="k">false</span>);</code></pre>
-      <p class="file">world/Ship.applyDrag()</p>
+      <p class="file">world/Ship.dragDeltaV() and Ship.applyDrag()</p>
+      <p>The formula is split out as a pure function so the trajectory predictor (see <a href="#gravity">Planet gravity</a>) can apply exactly the same drag to points the ship hasn't reached yet.</p>
       <p><code>DRAG</code> isn't tuned directly. It's derived from <code>SURFACE_TERMINAL_SPEED</code>, the top speed of a ship falling with its engine off at the landing zones. A falling ship stops speeding up when drag equals gravity, <code>DRAG × density × v² = g</code>, so <code>DRAG = SURFACE_GRAVITY / (SURFACE_AIR_DENSITY × SURFACE_TERMINAL_SPEED²)</code>. Tuning gravity or air density then keeps the terminal speed, and only the drag strength moves. Keep the terminal speed well above <code>MAX_LANDING_SPEED</code>, or the pilot could fall onto a pad without braking.</p>
       <p>A handy way to judge the feel: at the landing zones, drag as a fraction of gravity is <code>(v / SURFACE_TERMINAL_SPEED)²</code>. At half the terminal speed, drag is a quarter of gravity.</p>
       <p>Like spin damping, the density comes in through <code>beforeStep(dt, airDensity)</code>. Box2D's <code>linearDamping</code> isn't used for the same reason as <code>angularDamping</code>: it applies everywhere and can't tell vacuum from atmosphere. It's also linear in speed, not quadratic.</p>
@@ -884,7 +888,21 @@ out.add(dx / <span class="hl">distance</span> * magnitude, dy / <span class="hl"
         <div><span class="lbl">Main engine</span><span class="val">25.0 <small>m/s²</small></span><span class="note">thrust-to-weight ≈ 1.4 on the pad</span></div>
       </div>
       <p>That last comparison is a gameplay dial. Takeoff is possible but sluggish. Raising thrust or lowering surface gravity changes how the game feels.</p>
-      <p><code>accelerationAt(point, out)</code> is a pure function with no Box2D state. A future trajectory predictor can call it at points the ship hasn't reached yet and get exactly the same physics.</p>
+      <p><code>accelerationAt(point, out)</code> is a pure function with no Box2D state, so the trajectory predictor can call it at points the ship hasn't reached yet and get exactly the same physics.</p>
+
+      <h3>Predicting the future: the trajectory line</h3>
+      <p>Press Z and a dotted line grows from the ship showing where it will coast over the next <code>PREDICTION_SECONDS</code> with hands off the controls. A Box2D <code>World</code> can't be copied, and stepping the real one would move the real ship, so <code>TrajectoryPredictor</code> runs its own tiny simulation of one point with the same rule Box2D uses, <strong>semi-implicit Euler</strong>:</p>
+<pre><code><span class="c">// Forces from the state at the START of the step, as in beforeStep()</span>
+Ship.dragDeltaV(velocity, airDensity, dt, dragChange);
+gravity.accelerationAt(position, acceleration);
+<span class="k">if</span> (boosterTimeLeft &gt; 0f) acceleration.mulAdd(nose, BOOSTER_THRUST / mass);
+
+velocity.add(dragChange).mulAdd(acceleration, dt);   <span class="c">// v += Δv_drag + a·dt</span>
+position.mulAdd(velocity, <span class="hl">dt</span>);                    <span class="c">// x += v·dt, with the NEW v</span></code></pre>
+      <p class="file">world/TrajectoryPredictor.predict()</p>
+      <p>Same forces, same order, same <code>TIME_STEP</code>, so the numbers match Box2D to within float rounding over the whole line. The test proves it by predicting, then flying the real ship and comparing every step. The booster is included because once lit it can't be stopped. The main engine and steering are left out: the line answers "what if I let go now?".</p>
+      <p>The line stops early at the ground: when the point's height above the terrain straight below it (<code>Planet.altitudeOf</code>) drops to <code>HULL_RADIUS</code>. On a slope the round hull touches a little sooner than that, so the line can run a step or two past the real touchdown. Contacts aren't simulated at all.</p>
+      <p>The view side lives in <code>render/TrajectoryRenderer</code>. Dots are spaced every <code>SECONDS_PER_DOT</code> of prediction time, so they spread out when the ship is fast. The animation shows a window <code>[start, end]</code> of prediction time. Each press of Z plays one cycle: one sweep (<code>SWEEP_SECONDS</code> long) slides <code>end</code> out to draw the dots, the next slides <code>start</code> out to remove them, and then the line switches itself off. Pressing Z mid-grow cancels it (it retracts at once); pressing mid-retract queues another cycle. The predictor only runs while the line is visible.</p>
 
       <div class="aside angular">
         <span class="tag">Angular comparison</span>
@@ -1103,6 +1121,7 @@ ship.<span class="hl">onGroundContactBegin</span>(planet, speed);</code></pre>
         <div><span class="lbl">Main engine</span><span class="val" style="color:var(--thrust)">can reach it</span><span class="note">25 m/s² for 5 s is 125 m/s</span></div>
       </div>
       <p>Long burns in open space can hit the cap. If interplanetary speeds need to go higher, shrink the world (in meters) rather than raising velocities.</p>
+      <p>The trajectory predictor doesn't copy this cap, so above 120 m/s its line would run ahead of the real ship. A test checks that orbital speed just outside the air stays well below it.</p>
 
       <h3>Box2D angles don't wrap</h3>
       <p><code>body.getAngle()</code> is continuous. Two full turns read 4π, not 0. That's why <code>InterpolatedBody</code> can lerp angles directly. Any comparison with another angle needs care, which is why the tilt check uses <code>atan2</code> of a cross and dot product instead of subtracting angles.</p>
@@ -1125,7 +1144,7 @@ ship.<span class="hl">onGroundContactBegin</span>(planet, speed);</code></pre>
     Box2D.init();
 }</code></pre>
       <p class="file">core/src/test/java/…/world/ShipFlightTest.java</p>
-      <p>The tests fly the real ship. A gentle upright touchdown lands and then falls asleep. A fast or tilted one crashes. A landed ship doesn't roll and falls asleep. In vacuum the RCS reaches its turn rate, the spin coasts after release, and counter-steering stops it. In air the spin dies away, and very thick air stops it without ever reversing it. Restart destroys the old body. The rotation tests pass the air density in explicitly, so they don't depend on where the ship is. Because the step is fixed, every run gives exactly the same result. Run them with <code>./gradlew test</code>.</p>
+      <p>The tests fly the real ship. A gentle upright touchdown lands and then falls asleep. A fast or tilted one crashes. A landed ship doesn't roll and falls asleep. In vacuum the RCS reaches its turn rate, the spin coasts after release, and counter-steering stops it. In air the spin dies away, and very thick air stops it without ever reversing it. Restart destroys the old body. <code>TrajectoryPredictorTest</code> predicts a line, then flies the real ship hands-off and checks it follows the line step by step, in space, through the air, and with the booster burning. The rotation tests pass the air density in explicitly, so they don't depend on where the ship is. Because the step is fixed, every run gives exactly the same result. Run them with <code>./gradlew test</code>.</p>
     </section>
 
     <!-- 13 -->
@@ -1152,7 +1171,6 @@ ship.<span class="hl">onGroundContactBegin</span>(planet, speed);</code></pre>
             <tr><td>Impulse-based damage</td><td><code>postSolve</code> and <code>ContactImpulse</code></td><td>Replace the speed check with <code>impulse.getNormalImpulses()[0]</code></td></tr>
             <tr><td>Debris on crash</td><td>Deferred body creation, <code>bullet</code></td><td>Set a flag in <code>afterStep</code>, spawn small dynamic bodies after the step loop</td></tr>
             <tr><td>Collision filtering</td><td><code>categoryBits</code> / <code>maskBits</code></td><td>Add a <code>DEBRIS</code> category that hits terrain but not the ship</td></tr>
-            <tr><td>Trajectory line</td><td>Reusing pure physics functions</td><td>Integrate <code>PlanetaryGravity.accelerationAt()</code> forward with the fixed <code>TIME_STEP</code></td></tr>
           </tbody>
         </table>
       </div>

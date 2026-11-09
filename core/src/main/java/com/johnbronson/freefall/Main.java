@@ -64,7 +64,7 @@ public class Main extends ApplicationAdapter {
         cameraController.update(world, frameDelta);
 
         ScreenUtils.clear(SPACE_COLOR);
-        worldRenderer.render(world);
+        worldRenderer.render(world, frameDelta);
         if (debugVisible) {
             debugOverlay.render(world, worldRenderer.getViewport(), input.getActiveController());
         }
@@ -78,6 +78,7 @@ public class Main extends ApplicationAdapter {
         }
         if (input.isPressed(InputAction.TOGGLE_DEBUG)) debugVisible = !debugVisible;
         if (input.isPressed(InputAction.TOGGLE_CAMERA_LOCK)) cameraController.toggleFollowing();
+        if (input.isPressed(InputAction.TOGGLE_PREDICTOR)) worldRenderer.toggleTrajectory();
         if (input.isPressed(InputAction.RESTART)) world.requestRestart();
 
         Ship ship = world.getShip();

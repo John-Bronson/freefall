@@ -78,7 +78,7 @@ Later: the ship spawns at about 79° because it stands upright on the surface, s
 
 ## Phase 3: Gravity, Fuel & Atmospheric Drag
 
-Box2D's world gravity is zero. `PlanetaryGravity` applies Newtonian gravity toward every planet as a force before each step (`GameWorld.beforeStep`). Drag fits the same slot: a force applied before each step, computed from a pure function of position and velocity, which keeps it easy to unit-test. (The trajectory predictor stops at the atmosphere, so it never needs drag.) Don't use Box2D's `linearDamping`; it applies everywhere and ignores the atmosphere. Heat and overheat checks are game rules, so they go in `Ship.afterStep` and reuse `crash(reason)`.
+Box2D's world gravity is zero. `PlanetaryGravity` applies Newtonian gravity toward every planet as a force before each step (`GameWorld.beforeStep`). Drag fits the same slot: a force applied before each step, computed from a pure function of position and velocity, which keeps it easy to unit-test. The trajectory predictor (Phase 3.5) models drag too, so drag must be a pure function it can call. Don't use Box2D's `linearDamping`; it applies everywhere and ignores the atmosphere. Heat and overheat checks are game rules, so they go in `Ship.afterStep` and reuse `crash(reason)`.
 
 - [x] Implement gravity from both planetoids (inverse-square law, `PlanetaryGravity`; tested in `PlanetaryGravityTest`)
 - [x] Gravity plateau: below `Planet.GRAVITY_PLATEAU_RADIUS` (88.5 m) the pull holds at `SURFACE_GRAVITY` instead of growing, so descents don't feel like the planet suddenly grabs the ship. Above it, gravity stays inverse-square, so orbits above the plateau are still closed ellipses. Chosen over a lower falloff exponent, which would strengthen gravity far out and make orbits precess.
@@ -135,7 +135,7 @@ A pilot aid mapped to its own button (an "SAS", in the style of Kerbal Space Pro
 
 ## Phase 3.5: Physics Refactor & Trajectory Prediction
 
-Goal: draw a "coast" line ahead of the ship showing where it will go under gravity (and later drag) if the player stops thrusting.
+Goal: draw a "coast" line ahead of the ship showing where it will go under gravity and drag if the player stops thrusting.
 
 ### Refactor ✓ (superseded by the Box2D restructure, 2026-10)
 
@@ -157,41 +157,48 @@ PlanetaryGravity accelerationAt(point, out) (pure) and applyTo(world) (forces)
 Ship             has-a Body; intent → forces; FlightState rules in afterStep
 ```
 
-### Predictor (not started)
+### Predictor ✓ (built 2026-11-08; perf checks still open)
 
-A space-only coast line. Decided 2026-10-17:
+A fixed-time coast line (`PREDICTION_SECONDS`), drawn on demand. Decided 2026-10-17, revised 2026-11-08: the line now runs for a fixed time instead of a fixed distance, covers the atmosphere too, and models drag. (The earlier space-only version stopped at the air and ignored drag. Once the air was thickened, that left the player with no line on approach, which is when it helps most.)
 
-- [ ] Add a `TrajectoryPredictor` class (separate responsibility from `Ship`). Constructed with a `PhysicsWorld` reference. Input: ship state. Output: a reused `FloatArray` of predicted x,y pairs.
-- [ ] Each frame: copy the ship's state into a scratch state, call `world.step` N times with the fixed dt, record position after each step. N ≈ seconds-ahead / dt (start with 5s).
-- [ ] Prediction assumes no player thrust. Include remaining solid boost, since that fires regardless of input.
-- [ ] Stop early when the predicted point hits a planet. First pass: distance to center < radius. Later: look up terrain height at the point's mil angle around the planet (Phase 4 reuses this for real collision).
-- [ ] Draw the path with `ShapeRenderer` in a single `begin`/`end` block, **inside the low-res framebuffer** (it's part of the world, so it sits on the same pixel grid as everything else). Fade alpha along the line or dot every other segment.
-- [ ] Expose the predicted impact point (if any) for a future HUD marker.
-- **In an atmosphere: draw nothing.** Close to the ground the player flies by eye.
-- **In space: draw until the path either covers a set distance or touches an atmosphere.**
+**How it predicts.** A Box2D `World` can't be cloned and stepped ahead without moving the real ship, so the predictor can't call `world.step`. Instead it integrates a scratch position and velocity itself, with the same forces the real ship feels when the pilot is hands-off: gravity, drag, and any booster burn still running. Contacts are not modeled. The line just stops at the ground.
 
-A Box2D `World` can't be cloned and stepped ahead without moving the real ship, so the predictor can't call `world.step`. Instead it integrates a scratch position and velocity itself. Because the line only covers space, gravity (plus any booster burn) is the only force. No drag, no contacts and no terrain ray casts are needed: every atmosphere (108 m) sits above the highest terrain (78 m), so a path always reaches the air before it could reach the ground. The predictor doesn't depend on Phase 3's drag and can be built before or after it.
-
-- [ ] Add a `TrajectoryPredictor` class (separate responsibility from `Ship`). Input: ship position and velocity. Output: a reused `FloatArray` of predicted x,y pairs (empty when nothing should be drawn).
-- [ ] If the ship is inside any planet's atmosphere (`Planet.isInAtmosphere`), clear the points and stop.
-- [ ] Otherwise copy the ship's position and velocity into scratch `Vector2`s and repeat steps of `PhysicsWorld.TIME_STEP`: `v += a·dt`, then `x += v·dt`. That is semi-implicit Euler, the same integrator Box2D uses, so with the same dt and the same forces the line matches the real flight.
-- [ ] Acceleration comes from `PlanetaryGravity.accelerationAt`. Prediction assumes no player thrust; include remaining booster burn, since that fires regardless of input.
-- [ ] Stop when either:
-    - the predicted point is inside any planet's atmosphere (`isInAtmosphere`), or
-    - the path length so far (sum of each step's segment length) reaches the distance limit. Pick a starting value by eye, e.g. the planet separation (480 m).
-- [ ] Also cap the number of steps. A nearly stationary ship would take forever to cover the distance limit.
-- [ ] Draw the path with `ShapeRenderer` in a single `begin`/`end` block. Fade alpha along the line or dot every other segment.
-- [ ] Expose the **atmosphere entry point** (where the line stopped on an atmosphere, if it did) for a future HUD marker. That's where the heat shield needs to face forward.
-- [ ] Use the raw Box2D position and velocity as input (it's a physics prediction), but note the line starts up to one step behind the interpolated ship drawing. Start it at the interpolated position if the gap is visible.
+- [x] Extract drag into a pure function first, e.g. `Ship.dragDeltaV(velocity, airDensity, dt, out)`, returning the velocity change for one step (same clamp: one step can stop the ship but never reverse it). `Ship.applyDrag` turns it into a force (`m × Δv / dt`), and the predictor adds it to its scratch velocity. One source of truth, so the line can't drift from the real drag when `DRAG` is retuned. Existing tests must still pass unchanged.
+- [x] Add a `TrajectoryPredictor` class in `world/` (separate responsibility from `Ship`). Input: ship position, velocity, remaining booster time. Output: a reused `FloatArray` of predicted x,y pairs, one per step.
+- [x] Copy the ship's position and velocity into scratch `Vector2`s and repeat steps of `PhysicsWorld.TIME_STEP`, in the same order as the real step: forces from the current state, then `v += a·dt`, then `x += v·dt`. That is semi-implicit Euler, the integrator Box2D uses, so with the same dt and forces the line matches the real flight.
+    - `a` = `PlanetaryGravity.accelerationAt(x)` + booster (`BOOSTER_THRUST / HULL_MASS` along the nose, while scratch burn time remains).
+    - Drag Δv from `dragDeltaV`, using `GameWorld.airDensityAt(x)`.
+    - Prediction assumes no player thrust or rotation. The nose direction is held at its current angle for the booster.
+- [x] Horizon: `PREDICTION_SECONDS` (tune freely), step count derived as `PREDICTION_SECONDS / TIME_STEP`. No distance limit is needed, since the step count already caps the work.
+- [x] Stop early when the predicted point is below the terrain: `Planet.altitudeOf(point) <= HULL_RADIUS`. On slopes the round hull touches slightly sooner, so the line can run a step or two past the real touchdown. Expose that **impact point** (if any) for a future HUD marker.
+- [x] Expose the **atmosphere entry point** too (first point where `isInAtmosphere` becomes true, if it does). That's where the heat shield will need to face forward (Phase 3 heat).
+- [x] Use the raw Box2D position and velocity as input (it's a physics prediction), but the line starts up to one step behind the interpolated ship drawing. The renderer shifts the line by the gap so it meets the drawn ship.
 - [ ] Zero allocation per frame: no `new Vector2` / `new ArrayList` inside the loop. Verify with `Gdx.app.getJavaHeap()` on the debug HUD (flat, not sawtooth).
-- [ ] Measure cost with `System.nanoTime()` around the predict call; show rolling avg + max on debug HUD. Ignore the first few seconds (JIT warmup). Target: well under 1ms.
-- [ ] Test: with hands off the controls, does the ship follow the line exactly? Does the line update sensibly when rotating/thrusting? A headless test in the style of `ShipFlightTest` can compare the prediction against real steps. Compare with a small tolerance: Box2D is native C++ and the order of float operations can differ slightly from Java.
-- [ ] Known limit: Box2D caps movement at 2 m per step (`b2_maxTranslation`), 120 m/s at 60 Hz. Above that the real ship is clamped and the line runs ahead of it. Orbital speeds here are around 28 m/s, so this shouldn't come up; assert it in the test.
+- [ ] Measure cost with `System.nanoTime()` around the predict call; show rolling avg + max on the debug overlay. Ignore the first few seconds (JIT warmup). Target: well under 1 ms.
+- [x] Only predict while the line is visible (including while it retracts).
+
+**How it looks.**
+
+- [x] Toggled with Z (`InputAction.TOGGLE_PREDICTOR`). Free-camera zoom moved from Z/X to =/-.
+- [x] Dotted line: a small filled dot every N steps, so dots are **evenly spaced in time**. They spread out when the ship is fast and bunch up when it's slow, a free speed readout. Dot size is in meters, so scale it with `camera.zoom` to keep it visible at cruise zoom.
+- [x] The line leaves from the ship: skip points within `HULL_RADIUS` of the ship so it doesn't draw over the hull. (The path is the center of mass, not the nose, so a ship drifting sideways has its line leave from its flank. That's the honest version.)
+- [x] Sweep animation. The drawn part is a window `[start, end]` in prediction time (0 to `PREDICTION_SECONDS`); draw only points whose time (`index × TIME_STEP`) is inside it.
+    - Each Z press plays one cycle: grow (`start = 0`, `end` rises from 0 to the horizon, dots appear from the ship outward), then retract (`end` = horizon, `start` rises from 0 to the horizon, dots vanish from the ship outward), then the line turns itself off.
+    - Each sweep takes `TrajectoryRenderer.SWEEP_SECONDS` (tune by eye).
+    - Z mid-grow cancels (turns into a retract at once); Z mid-retract queues another cycle.
+    - This is display state, so it lives in a `TrajectoryRenderer` in `render/`, drawn inside `WorldRenderer`'s single `begin`/`end`.
+
+**Tests.**
+
+- [x] Headless, in the style of `ShipFlightTest`: put a hands-off ship in space, predict, then step the real world and compare positions step by step with a small tolerance (Box2D is native C++, and float operation order can differ from Java).
+- [x] Same comparison for a ship descending through the atmosphere, so drag is covered.
+- [x] A path aimed at the ground stops at the terrain and reports an impact point.
+- [x] Known limit: Box2D caps movement at 2 m per step (`b2_maxTranslation`), 120 m/s at 60 Hz. Above that the real ship is clamped and the line runs ahead of it. Assert in the test that circular orbit speed at the atmosphere edge (derived from the planet constants) is under that cap.
 - [ ] Later (level 4, landing clearance): a longer horizon so the player can see whether an orbit closes.
 
 ### Notes for drag (Phase 3)
 
-Drag depends on velocity, not position, and opposes it. With a large step it can overshoot and reverse velocity, causing jitter or instability. Clamp the per-step drag so it never removes more speed than the ship has (force × dt / mass ≤ speed). The `density * speed` product computed for drag is also the input for heat buildup. The trajectory predictor doesn't model drag (it stops at the atmosphere), so drag doesn't need to be a pure function for its sake, though keeping it one still makes it easy to unit-test.
+Drag depends on velocity, not position, and opposes it. With a large step it can overshoot and reverse velocity, causing jitter or instability. Clamp the per-step drag so it never removes more speed than the ship has (force × dt / mass ≤ speed). The `density * speed` product computed for drag is also the input for heat buildup. The trajectory predictor models drag, so the drag math must be a pure function both `Ship` and the predictor call (see Phase 3.5). That also makes it easy to unit-test.
 
 ## Phase 4: Collision Detection ✓ (via Box2D), landing legs to do
 
@@ -351,7 +358,7 @@ Builds on everything above. Each level adds one new skill on top of the last.
 
 - [ ] **Glider / lifting body.** No lift-off boosters, but it generates **lift** in the atmosphere, so it can glide and trade speed for altitude.
     - Requires modeling **angle of attack**: the angle between the ship's nose and its velocity. Heat already needs that same angle (Phase 3), so compute it in one place.
-    - Lift acts perpendicular to the velocity, scaled by air density × speed² × a lift curve of angle of attack (rises up to a stall angle, then drops). Box2D has no aerodynamics, so lift is a force applied before each step, like drag. Like drag, it only acts in the atmosphere, so the trajectory predictor never needs it.
+    - Lift acts perpendicular to the velocity, scaled by air density × speed² × a lift curve of angle of attack (rises up to a stall angle, then drops). Box2D has no aerodynamics, so lift is a force applied before each step, like drag. Like drag, it only acts in the atmosphere, but the predictor covers the atmosphere, so lift must be a pure function it can call too.
     - Ship type as data: thrust, fuel, boosters, lift and drag coefficients, hull shape. A level config picks the ship.
     - Gameplay questions: how does it take off without boosters (runway roll on a landing zone? a launch from the station?) and is it a level of its own or a player choice?
 
@@ -451,12 +458,12 @@ DSE cuts rocks one pixel at a time, which points to the Noita-style approach: a 
 - [ ] F2: Toggle infinite fuel
 - [ ] F3: Toggle collision on/off
 - [x] ' (apostrophe): Toggle debug overlay (Box2D shapes, fps, controller state). Velocity vectors and zones aren't drawn yet.
-- [ ] F4 (or separate key): Toggle trajectory prediction line
+- [ ] Trajectory prediction line: now a player feature with its own key (Phase 3.5)
 - [ ] F5: Slow motion (0.25x speed)
 - [ ] F6: Teleport ship to planet 2
 - [ ] F7: Refill fuel
 - [x] R: Reset to starting position (restart)
-- [x] L: Toggle camera follow; WASD pan and Z/X zoom in free camera
+- [x] L: Toggle camera follow; WASD pan and =/- zoom in free camera
 - [ ] F9: Toggle heat damage on/off (invincibility)
 - [ ] F10: Clear heat meter (instant cooldown)
 - [ ] F11: Toggle atmosphere visualization

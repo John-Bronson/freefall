@@ -25,6 +25,9 @@ public final class GameWorld implements StepListener, Disposable {
     private final PhysicsWorld physics = new PhysicsWorld();
     private final Array<Planet> planets = new Array<>();
     private final PlanetaryGravity gravity = new PlanetaryGravity(planets);
+    // Java runs field initializers top to bottom, so `planets` and `gravity` above
+    // already exist when this line runs.
+    private final TrajectoryPredictor predictor = new TrajectoryPredictor(planets, gravity);
     private Ship ship;
     private boolean restartRequested;
 
@@ -83,13 +86,20 @@ public final class GameWorld implements StepListener, Disposable {
     }
 
     public Planet nearestPlanetTo(Vector2 point) {
-        Planet nearest = planets.first();
-        for (Planet planet : planets) {
-            if (planet.getCenter().dst2(point) < nearest.getCenter().dst2(point)) {
-                nearest = planet;
-            }
-        }
-        return nearest;
+        return Planet.nearestTo(planets, point);
+    }
+
+    /**
+     * Works out the ship's coast line for the next few seconds and returns the
+     * predictor holding the result. Renderers call this only while the line is on
+     * screen, so a hidden line costs nothing.
+     *
+     * <p>The predictor is reused every call, so this allocates nothing. Read its
+     * results the same frame; the next call overwrites them.
+     */
+    public TrajectoryPredictor predictTrajectory() {
+        predictor.predict(ship);
+        return predictor;
     }
 
     public Ship getShip() {

@@ -7,6 +7,7 @@ import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.ChainShape;
 import com.badlogic.gdx.physics.box2d.FixtureDef;
 import com.badlogic.gdx.physics.box2d.World;
+import com.badlogic.gdx.utils.Array;
 import com.johnbronson.freefall.physics.CollisionCategory;
 import com.johnbronson.freefall.physics.FixtureRole;
 
@@ -163,6 +164,28 @@ public final class Planet {
         float dy = worldPoint.y - center.y;
         float angle = (float) Math.atan2(dy, dx);
         return (float) Math.sqrt(dx * dx + dy * dy) - terrain.surfaceRadiusAt(angle);
+    }
+
+    /**
+     * The planet whose center is closest to {@code point}. Air density and terrain
+     * height are looked up on this planet. Shared by {@link GameWorld} and the
+     * {@link TrajectoryPredictor}, so both always pick the same planet.
+     *
+     * <p>{@code static}: it works on a list of planets rather than on one planet, so it
+     * belongs to the class. Call it as {@code Planet.nearestTo(planets, point)}.
+     *
+     * <p>It compares squared distances ({@code dst2}). Squaring keeps the order the
+     * same (if a &lt; b then a² &lt; b² for positive numbers) and skips a square root.
+     */
+    static Planet nearestTo(Array<Planet> planets, Vector2 point) {
+        Planet nearest = planets.first();
+        // Java's "for-each" loop, like TypeScript's `for (const planet of planets)`.
+        for (Planet planet : planets) {
+            if (planet.getCenter().dst2(point) < nearest.getCenter().dst2(point)) {
+                nearest = planet;
+            }
+        }
+        return nearest;
     }
 
     /** The planet's own vector, not a copy. Treat it as read-only. */

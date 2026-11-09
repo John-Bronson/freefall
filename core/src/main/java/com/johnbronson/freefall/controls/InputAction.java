@@ -13,6 +13,8 @@ public enum InputAction {
     ZOOM_OUT,
     TOGGLE_CAMERA_LOCK,
     TOGGLE_DEBUG,
+    /** Play one cycle of the predicted coast line (draw out, then clear). */
+    TOGGLE_PREDICTOR,
     RESTART,
     EXIT
 }

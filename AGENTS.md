@@ -33,15 +33,15 @@ Freefall is a Lunar Lander-style game built with LibGDX (1.14.0) and Java 21. Th
 **Packages (in `com.johnbronson.freefall`):**
 - `Main` — `ApplicationAdapter` lifecycle only: wires input → `GameWorld` → camera → renderers.
 - `physics/` — Generic Box2D plumbing: `PhysicsWorld` (owns the `World`, fixed 1/60 s timestep with accumulator and interpolation `alpha`), `StepListener`, `InterpolatedBody`, `FixtureRole` (fixture user data), `CollisionCategory` (filter bits).
-- `world/` — The simulation model; never draws. `GameWorld` (planets, ship, restart), `Planet` (static body + terrain `ChainShape`), `Terrain` / `LandingZone`, `Ship` (intent → forces, `FlightState`), `PlanetaryGravity`, `ShipContactListener` (records contacts; rules run in `Ship.afterStep`).
-- `render/` — The view: `WorldRenderer` (meters-based `ExtendViewport`), `PlanetRenderer`, `ShipRenderer`, `CameraController`, `Hud`, `DebugOverlay` (`Box2DDebugRenderer`). Pixel art replaces the per-entity renderers here only.
+- `world/` — The simulation model; never draws. `GameWorld` (planets, ship, restart), `Planet` (static body + terrain `ChainShape`), `Terrain` / `LandingZone`, `Ship` (intent → forces, `FlightState`), `PlanetaryGravity`, `TrajectoryPredictor` (hands-off coast line over `PREDICTION_SECONDS`; reuses the gravity and drag functions), `ShipContactListener` (records contacts; rules run in `Ship.afterStep`).
+- `render/` — The view: `WorldRenderer` (meters-based `ExtendViewport`), `PlanetRenderer`, `ShipRenderer`, `TrajectoryRenderer` (dotted line, one grow-then-retract cycle per Z press), `CameraController`, `Hud`, `DebugOverlay` (`Box2DDebugRenderer`). Pixel art replaces the per-entity renderers here only.
 - `controls/` — Keyboard/controller bindings merged by `InputManager`.
 
 **Units:** SI everywhere — meters, kilograms, seconds, radians. No pixels-per-meter conversion in game code; the camera maps meters to the screen. Ship local +Y is the nose.
 
 **Coordinate system:** Barycenter at origin (0,0). The two planets sit on the x-axis at ±`GameWorld.PLANET_DISTANCE_FROM_ORIGIN`. Terrain, landing-zone and atmosphere radii are constants in `Planet` (all tuned, so read them there rather than quoting numbers). The ship spawns landed on planet 1's first landing zone.
 
-**Controls:** Up thrust, Left/Right rotate, Space booster, R restart, L toggle camera follow, WASD pan and Z/X zoom (free camera only), ' debug overlay, Q quit.
+**Controls:** Up thrust, Left/Right rotate, Space booster, R restart, L toggle camera follow, Z trajectory line, WASD pan and =/- zoom (free camera only), ' debug overlay, Q quit.
 
 **Terrain system:** 128 seeded vertex radii per planet, shared by the Box2D chain and the renderer. Landing zones (0–22.5°, 120–142.5°, 240–262.5°) are flattened and drawn with yellow stripes.
 
@@ -60,4 +60,4 @@ The official LibGDX API documentation is hosted at: https://javadoc.io/doc/com.b
 
 ## Development Status
 
-See `plan.md` for the full phased development plan. Phases 0–1 are complete, and Phase 2 is complete apart from two debug/visual items lost in the Box2D move. Phase 4 (collision) is done via Box2D, and Phase 3.5's refactor was superseded by it. Next up: the rest of Phase 3 (atmosphere, drag, heat) and the landing-zone check in Phase 5.
+See `plan.md` for the full phased development plan. Phases 0–1 are complete, and Phase 2 is complete apart from two debug/visual items lost in the Box2D move. Phase 4 (collision) is done via Box2D, and Phase 3.5's refactor was superseded by it. The Phase 3.5 trajectory predictor is built. Heat (Phase 3) is deferred. Next up: the landing-zone check in Phase 5.

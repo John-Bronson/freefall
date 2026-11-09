@@ -23,10 +23,17 @@ public class KeyboardBindings implements InputBinding {
                 return Gdx.input.isKeyJustPressed(Input.Keys.W);
             case PAN_CAM_DOWN:
                 return Gdx.input.isKeyJustPressed(Input.Keys.S);
+            // Zoom moved from Z/X to =/- (the keys marked +/− on most keyboards),
+            // so Z is free for the predictor.
             case ZOOM_IN:
-                return Gdx.input.isKeyJustPressed(Input.Keys.Z);
+                return Gdx.input.isKeyJustPressed(Input.Keys.EQUALS);
             case ZOOM_OUT:
-                return Gdx.input.isKeyJustPressed(Input.Keys.X);
+                return Gdx.input.isKeyJustPressed(Input.Keys.MINUS);
+            // "Just pressed" is true only on the frame the key goes down, not on every
+            // frame it's held. That's what a one-shot action needs: isKeyPressed would
+            // fire again every frame for as long as the key is held down.
+            case TOGGLE_PREDICTOR:
+                return Gdx.input.isKeyJustPressed(Input.Keys.Z);
             case TOGGLE_CAMERA_LOCK:
                 return Gdx.input.isKeyJustPressed(Input.Keys.L);
             case TOGGLE_DEBUG:

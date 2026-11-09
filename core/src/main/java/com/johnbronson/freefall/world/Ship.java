@@ -254,22 +254,57 @@ public final class Ship {
     private void applyDrag(float dt, float airDensity) {
         // Box2D reuses this Vector2 for every call. Read it, but never keep or change it.
         Vector2 velocity = body.getLinearVelocity();
-        // Speed is the length of the velocity arrow: sqrt(vx² + vy²).
+
+        // Ask the shared drag formula how much this step's drag changes the velocity.
+        // `force` is a reused scratch field, so this allocates nothing. The method
+        // writes its answer into the Vector2 we pass and also returns it, which is
+        // why we can chain .scl() straight onto the call.
+        //
+        // Box2D only takes forces, so run F = m × a backwards: a = Δv / dt, so
+        // F = m × Δv / dt. scl() ("scale") multiplies both x and y in place.
+        dragDeltaV(velocity, airDensity, dt, force).scl(body.getMass() / dt);
+
+        // wake = false, for the same reason as spin damping.
+        body.applyForceToCenter(force, false);
+    }
+
+    /**
+     * The velocity change that air drag causes over one step, written into {@code out}.
+     * This is the one place the drag formula lives. The real ship ({@link #applyDrag})
+     * and the {@link TrajectoryPredictor} both call it, so the predicted line can never
+     * disagree with how the ship actually slows down, even after {@link #DRAG} is retuned.
+     *
+     * <p>It's a <em>pure function</em>: the answer depends only on the arguments, and it
+     * touches no Box2D state. (Like a pure pipe in Angular.) {@code static} means it
+     * belongs to the class, not to one ship, so it can be called as
+     * {@code Ship.dragDeltaV(...)} without having a Ship at all.
+     *
+     * @param velocity   current velocity in m/s. Only read, never changed.
+     * @param airDensity relative air density here; 0 in space, so no drag.
+     * @param dt         step length in seconds.
+     * @param out        where to write the result. Passing it in, instead of returning
+     *                   a {@code new Vector2}, avoids creating garbage every step.
+     * @return {@code out}, for chaining.
+     */
+    static Vector2 dragDeltaV(Vector2 velocity, float airDensity, float dt, Vector2 out) {
+        // Speed is the length of the velocity arrow: sqrt(vx² + vy²) (Pythagoras).
         float speed = velocity.len();
 
         // The fraction of the velocity to remove this step. The `speed` factor makes it
         // quadratic: the speed removed is fraction × speed, which grows with speed².
-        // Capped at 1, so one step can at most stop the ship, never reverse it.
+        // Double the speed and the fraction doubles, so the speed lost quadruples.
+        //
+        // Units check: DRAG is per meter (1/m), density has no unit, speed is m/s and
+        // dt is s. Multiplied: (1/m) × (m/s) × s = no unit, as a fraction should be.
+        //
+        // Capped at 1 with Math.min, so one step can at most stop the ship, never
+        // reverse it. Without the cap, very thick air or a big dt could give a fraction
+        // like 1.5, which would fling the ship backwards.
         float fractionToReduce = Math.min(DRAG * airDensity * speed * dt, 1f);
 
-        // The velocity change we want is −fraction × velocity: the same arrow, shrunk.
-        // Box2D only takes forces, so run F = m × a backwards: a = Δv / dt.
-        // `force` is a reused scratch field, so this allocates nothing. set() copies the
-        // numbers in, and scl() scales the vector in place and returns it.
-        force.set(velocity).scl(-fractionToReduce * body.getMass() / dt);
-
-        // wake = false, for the same reason as spin damping.
-        body.applyForceToCenter(force, false);
+        // The change is −fraction × velocity: the same arrow, shrunk and flipped so it
+        // points backwards. set() copies the numbers in, and scl() scales in place.
+        return out.set(velocity).scl(-fractionToReduce);
     }
 
     /** Game rules. Call after every world step, when contacts for the step are known. */
@@ -381,5 +416,17 @@ public final class Ship {
 
     public boolean isBoosterBurning() {
         return boosterTimeLeft > 0f;
+    }
+
+    /**
+     * Seconds of booster burn still to come. Once lit, the booster can't be stopped, so
+     * the {@link TrajectoryPredictor} includes it even though the pilot is hands-off.
+     *
+     * <p>No access modifier ({@code public}, {@code private}...) means
+     * <em>package-private</em>: only classes in {@code com.johnbronson.freefall.world}
+     * can call it. The HUD doesn't need it, so there's no reason to make it public.
+     */
+    float getBoosterTimeLeft() {
+        return boosterTimeLeft;
     }
 }
