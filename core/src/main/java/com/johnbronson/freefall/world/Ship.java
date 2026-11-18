@@ -198,8 +198,7 @@ public final class Ship {
     }
 
     private void applyThrust(float newtons) {
-        // getWorldVector rotates a local direction by the body's current angle.
-        force.set(body.getWorldVector(NOSE_DIRECTION)).scl(newtons);
+        force.set(noseDirection()).scl(newtons);
         // wake = true: thrusting must wake a ship that fell asleep on a landing zone.
         body.applyForceToCenter(force, true);
     }
@@ -338,8 +337,19 @@ public final class Ship {
     /** Angle between the nose and "straight up" (away from the planet's center), 0..π. */
     private float tiltRelativeTo(Planet planet) {
         localUp.set(body.getWorldCenter()).sub(planet.getCenter()).nor();
-        Vector2 nose = body.getWorldVector(NOSE_DIRECTION);
+        Vector2 nose = noseDirection();
         return Math.abs((float) Math.atan2(localUp.crs(nose), localUp.dot(nose)));
+    }
+
+    /**
+     * Unit vector along the nose, in world coordinates: the ship's local +Y rotated by
+     * its current angle θ, which is (−sin θ, cos θ).
+     *
+     * <p>Box2D hands back the same Vector2 from every {@code getWorldVector} call, so
+     * use the result straight away or copy it with {@code set()}; don't keep it.
+     */
+    Vector2 noseDirection() {
+        return body.getWorldVector(NOSE_DIRECTION);
     }
 
     /**

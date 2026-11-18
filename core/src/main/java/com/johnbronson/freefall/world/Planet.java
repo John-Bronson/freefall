@@ -60,21 +60,41 @@ public final class Planet {
     /** Rock is grippy. Box2D mixes two fixtures' friction as sqrt(a * b). */
     private static final float TERRAIN_FRICTION = 0.8f;
 
-    private static final LandingZone[] LANDING_ZONES = {
-        LandingZone.ofDegrees(0f, 22.5f),
-        LandingZone.ofDegrees(120f, 142.5f),
-        LandingZone.ofDegrees(240f, 262.5f),
-    };
+    /**
+     * Width of the planet's one landing zone, in terrain segments. 8 segments is 22.5°
+     * of the surface: 8 × (360° / 128). At {@link #LANDING_ZONE_RADIUS} that's an arc of
+     * about 2π × 280 m × (22.5 / 360) ≈ 110 m. Where the zone sits is random; see
+     * {@link Terrain}.
+     */
+    public static final int LANDING_ZONE_SEGMENTS = 8;
 
     private final Vector2 center;
     private final Terrain terrain;
     private final Body body;
 
+    /**
+     * @param terrainSeed decides the hills AND where the landing zone is. A restart
+     *                    builds new planets from a new seed, so both change on R.
+     */
     public Planet(World world, float centerX, float centerY, long terrainSeed) {
         this.center = new Vector2(centerX, centerY);
+        // Terrain picks the landing zone's position itself, from the same seeded random
+        // generator it uses for the hills. Planet only says how wide the zone is.
         this.terrain = new Terrain(terrainSeed, MIN_TERRAIN_RADIUS, MAX_TERRAIN_RADIUS,
-            LANDING_ZONE_RADIUS, LANDING_ZONES);
+            LANDING_ZONE_RADIUS, LANDING_ZONE_SEGMENTS);
         this.body = createBody(world);
+    }
+
+    /**
+     * Destroys the planet's Box2D body (and its terrain fixture with it). Used on
+     * restart, when the planets are rebuilt from a new seed.
+     *
+     * <p>Only call this outside {@code world.step()}: Box2D locks the world while it
+     * steps, and destroying a body then crashes. {@link GameWorld} applies restarts
+     * after the step for exactly this reason.
+     */
+    void removeFrom(World world) {
+        world.destroyBody(body);
     }
 
     private Body createBody(World world) {
@@ -128,23 +148,26 @@ public final class Planet {
         return SURFACE_GRAVITY * GRAVITY_PLATEAU_RADIUS * GRAVITY_PLATEAU_RADIUS;
     }
 
-    /** Angle from the planet's center to the middle of a landing zone, in radians. */
-    public float getLandingSiteAngle(int zoneIndex) {
-        return terrain.landingSiteAngle(LANDING_ZONES[zoneIndex]);
+    /**
+     * Angle from the planet's center to the middle of its landing zone, in radians
+     * (0..2π, counter-clockwise from the planet's +X axis).
+     */
+    public float getLandingSiteAngle() {
+        return terrain.landingSiteAngle();
     }
 
-    /** World position {@code height} meters straight above the middle of a landing zone. */
-    public Vector2 getLandingSite(int zoneIndex, float height, Vector2 out) {
-        float angle = getLandingSiteAngle(zoneIndex);
+    /** World position {@code height} meters straight above the middle of the landing zone. */
+    public Vector2 getLandingSite(float height, Vector2 out) {
+        float angle = getLandingSiteAngle();
         // The site is the midpoint of a straight segment between two vertices. That
         // midpoint is slightly closer to the center than the vertices are.
         float surfaceRadius = LANDING_ZONE_RADIUS * MathUtils.cos(Terrain.ANGLE_BETWEEN_VERTICES / 2f);
         return out.set(MathUtils.cos(angle), MathUtils.sin(angle)).scl(surfaceRadius + height).add(center);
     }
 
-    /** True if {@code worldPoint} is inside the planet's atmosphere */
+    /** True if {@code worldPoint} is inside the planet's atmosphere. */
     public boolean isInAtmosphere(Vector2 worldPoint) {
-        return getCenter().dst(worldPoint) < ATMOSPHERE_RADIUS;
+        return center.dst(worldPoint) < ATMOSPHERE_RADIUS;
     }
 
     /**

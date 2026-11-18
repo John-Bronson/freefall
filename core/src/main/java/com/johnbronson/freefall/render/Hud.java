@@ -45,7 +45,8 @@ public final class Hud implements Disposable {
         // Clamped: a flat segment dips slightly below the curve through its vertices.
         float altitude = Math.max(0f, nearest.altitudeOf(position) - Ship.HULL_RADIUS);
         float angle = ship.getHull().getAngle(world.getAlpha());
-        int heading = (MathUtils.round(-angle * MathUtils.radiansToDegrees) % 360 + 360) % 360;
+        // Compass style: 0–359, clockwise. floorMod wraps negatives (−10 → 350).
+        int heading = Math.floorMod(MathUtils.round(-angle * MathUtils.radiansToDegrees), 360);
 
         viewport.apply();
         batch.setProjectionMatrix(viewport.getCamera().combined);
@@ -69,7 +70,6 @@ public final class Hud implements Disposable {
 
         shapeRenderer.setProjectionMatrix(viewport.getCamera().combined);
         drawHeadingDial(angle);
-
     }
 
     /** Draws one right-aligned line and returns the y for the next one. */

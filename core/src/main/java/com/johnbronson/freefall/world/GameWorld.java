@@ -1,5 +1,6 @@
 package com.johnbronson.freefall.world;
 
+import com.badlogic.gdx.math.RandomXS128;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Array;
@@ -33,23 +34,68 @@ public final class GameWorld implements StepListener, Disposable {
 
     private final Vector2 spawnPoint = new Vector2();
 
+    /**
+     * Hands out a new terrain seed on every restart. It's seeded itself (from the seed
+     * passed to the constructor), so a given starting seed always gives the same series
+     * of worlds: the first one, the one after one restart, and so on. That keeps tests
+     * repeatable, while the game still gets a new world each launch, because
+     * {@code Main} passes a random starting seed.
+     */
+    private final RandomXS128 restartSeeds;
+
     /** @param terrainSeed decides the terrain; the same seed builds the same planets. */
     public GameWorld(long terrainSeed) {
-        World world = physics.getWorld();
-        world.setContactListener(new ShipContactListener());
+        physics.getWorld().setContactListener(new ShipContactListener());
+        restartSeeds = new RandomXS128(terrainSeed);
 
-        planets.add(new Planet(world, -PLANET_DISTANCE_FROM_ORIGIN, 0f, terrainSeed));
-        planets.add(new Planet(world, PLANET_DISTANCE_FROM_ORIGIN, 0f, terrainSeed + 1));
-
+        buildPlanets(terrainSeed);
         ship = spawnShip();
     }
 
-    /** Parks the ship on the first landing zone of the first planet, pointing up. */
+    /**
+     * Creates both planets from one seed. Each planet's seed decides its hills and where
+     * its landing zone is. The second planet uses {@code seed + 1}, so the two planets
+     * don't look the same.
+     */
+    private void buildPlanets(long seed) {
+        World world = physics.getWorld();
+        planets.add(new Planet(world, -PLANET_DISTANCE_FROM_ORIGIN, 0f, seed));
+        planets.add(new Planet(world, PLANET_DISTANCE_FROM_ORIGIN, 0f, seed + 1));
+    }
+
+    /**
+     * Throws the whole world away and builds a new one: new hills, new landing sites,
+     * and a fresh ship on planet 1's new site.
+     *
+     * <p>Only runs outside {@code world.step()} (see {@link #update}): Box2D locks the
+     * world while it steps, and destroying or creating bodies then crashes.
+     */
+    private void restart() {
+        // 1. Destroy the old Box2D bodies: the ship first, then the planets.
+        ship.removeFrom(physics.getWorld());
+        for (Planet planet : planets) {
+            planet.removeFrom(physics.getWorld());
+        }
+
+        // 2. Empty the list and refill it. The list itself must stay the same object:
+        //    PlanetaryGravity and TrajectoryPredictor were handed this exact list in
+        //    their constructors and keep reading it. Assigning a new Array to `planets`
+        //    would leave them looking at the old, destroyed planets. (The `final` on the
+        //    field enforces this: the compiler won't allow `planets = new Array<>()`.)
+        //    The renderer, camera and HUD ask GameWorld for planets every frame, so
+        //    they pick up the new ones on their own.
+        planets.clear();
+        buildPlanets(restartSeeds.nextLong());
+
+        // 3. A new ship, on planet 1's new landing site.
+        ship = spawnShip();
+    }
+
+    /** Parks the ship on the first planet's landing zone, pointing up. */
     private Ship spawnShip() {
         Planet home = planets.first();
-        int zone = 0;
-        home.getLandingSite(zone, SPAWN_HEIGHT, spawnPoint);
-        return new Ship(physics.getWorld(), spawnPoint, Ship.uprightAngle(home.getLandingSiteAngle(zone)));
+        home.getLandingSite(SPAWN_HEIGHT, spawnPoint);
+        return new Ship(physics.getWorld(), spawnPoint, Ship.uprightAngle(home.getLandingSiteAngle()));
     }
 
     /** Call once per rendered frame. */
@@ -59,8 +105,7 @@ public final class GameWorld implements StepListener, Disposable {
         // Outside world.step(), so destroying and creating bodies is safe.
         if (restartRequested) {
             restartRequested = false;
-            ship.removeFrom(physics.getWorld());
-            ship = spawnShip();
+            restart();
         }
     }
 
@@ -80,7 +125,7 @@ public final class GameWorld implements StepListener, Disposable {
         return nearestPlanetTo(point).airDensityAt(point);
     }
 
-    /** Replaces the ship with a fresh one at the next update. */
+    /** Rebuilds the world (new planets, new ship) at the next update. See {@link #restart()}. */
     public void requestRestart() {
         restartRequested = true;
     }

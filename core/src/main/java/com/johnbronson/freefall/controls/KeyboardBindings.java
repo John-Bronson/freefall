@@ -1,65 +1,55 @@
 package com.johnbronson.freefall.controls;
 
-import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Input.Keys;
 
-public class KeyboardBindings implements InputBinding {
+/**
+ * Keyboard layout. Held keys (thrust, rotate) use {@code isKeyPressed}, which is true on
+ * every frame the key is down. One-shot actions use {@code isKeyJustPressed}, which is
+ * true only on the frame the key goes down; with {@code isKeyPressed}, holding R would
+ * restart the game every frame.
+ */
+public final class KeyboardBindings implements InputBinding {
+
     @Override
     public boolean isPressed(InputAction action) {
-        switch (action) {
-            case ROTATE_LEFT:
-                return Gdx.input.isKeyPressed(Input.Keys.LEFT);
-            case ROTATE_RIGHT:
-                return Gdx.input.isKeyPressed(Input.Keys.RIGHT);
-            case THRUST_MAIN:
-                return Gdx.input.isKeyPressed(Input.Keys.UP);
-            case THRUST_SOLID:
-                return Gdx.input.isKeyJustPressed(Input.Keys.SPACE);
-            case PAN_CAM_LEFT:
-                return Gdx.input.isKeyJustPressed(Input.Keys.A);
-            case PAN_CAM_RIGHT:
-                return Gdx.input.isKeyJustPressed(Input.Keys.D);
-            case PAN_CAM_UP:
-                return Gdx.input.isKeyJustPressed(Input.Keys.W);
-            case PAN_CAM_DOWN:
-                return Gdx.input.isKeyJustPressed(Input.Keys.S);
-            // Zoom moved from Z/X to =/- (the keys marked +/− on most keyboards),
-            // so Z is free for the predictor.
-            case ZOOM_IN:
-                return Gdx.input.isKeyJustPressed(Input.Keys.EQUALS);
-            case ZOOM_OUT:
-                return Gdx.input.isKeyJustPressed(Input.Keys.MINUS);
-            // "Just pressed" is true only on the frame the key goes down, not on every
-            // frame it's held. That's what a one-shot action needs: isKeyPressed would
-            // fire again every frame for as long as the key is held down.
-            case TOGGLE_PREDICTOR:
-                return Gdx.input.isKeyJustPressed(Input.Keys.Z);
-            case TOGGLE_CAMERA_LOCK:
-                return Gdx.input.isKeyJustPressed(Input.Keys.L);
-            case TOGGLE_DEBUG:
-                return Gdx.input.isKeyJustPressed(Input.Keys.APOSTROPHE);
-            case RESTART:
-                return Gdx.input.isKeyJustPressed(Input.Keys.R);
-            case EXIT:
-                return Gdx.input.isKeyJustPressed(Input.Keys.Q);
-            default:
-                return false;
-        }
+        // A switch *expression* (Java 14+): each `case X -> value` yields a value, with no
+        // `break` or fall-through to worry about. The compiler checks that every enum
+        // value is covered, so adding an InputAction without a key here won't compile.
+        // TypeScript has no direct equivalent; think of an object map lookup that the
+        // compiler checks for completeness.
+        return switch (action) {
+            case ROTATE_LEFT -> held(Keys.LEFT);
+            case ROTATE_RIGHT -> held(Keys.RIGHT);
+            case THRUST_SOLID -> tapped(Keys.SPACE);
+            case PAN_CAM_LEFT -> tapped(Keys.A);
+            case PAN_CAM_RIGHT -> tapped(Keys.D);
+            case PAN_CAM_UP -> tapped(Keys.W);
+            case PAN_CAM_DOWN -> tapped(Keys.S);
+            // =/- are the keys marked +/− on most keyboards.
+            case ZOOM_IN -> tapped(Keys.EQUALS);
+            case ZOOM_OUT -> tapped(Keys.MINUS);
+            case TOGGLE_PREDICTOR -> tapped(Keys.Z);
+            case TOGGLE_CAMERA_LOCK -> tapped(Keys.L);
+            case TOGGLE_DEBUG -> tapped(Keys.APOSTROPHE);
+            case RESTART -> tapped(Keys.R);
+            case EXIT -> tapped(Keys.Q);
+        };
     }
 
     @Override
     public float getAxisValue(InputAxis axis) {
-        switch (axis) {
-            case THRUST_MAIN_AXIS:
-                return Gdx.input.isKeyPressed(Input.Keys.UP) ? 1.0f : 0.0f;
-            case PAN_CAM_HORIZONTAL:
-                return 0.0f;
-            case PAN_CAM_VERTICAL:
-                return 0.0f;
-            case ZOOM_AXIS:
-                return 0.0f;
-            default:
-                return 0.0f;
-        }
+        return switch (axis) {
+            // A key is all or nothing: full throttle while Up is held.
+            case THRUST_MAIN_AXIS -> held(Keys.UP) ? 1f : 0f;
+        };
+    }
+
+    private static boolean held(int key) {
+        return Gdx.input.isKeyPressed(key);
+    }
+
+    private static boolean tapped(int key) {
+        return Gdx.input.isKeyJustPressed(key);
     }
 }

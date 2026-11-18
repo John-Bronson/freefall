@@ -104,11 +104,11 @@ class TrajectoryPredictorTest {
     }
 
     /**
-     * A point {@code height} m above landing zone 0 of the given planet. Planet 0 is
+     * A point {@code height} m above the given planet's landing zone. Planet 0 is
      * the home planet (where the ship spawns), planet 1 the other one.
      */
     private Vector2 aboveLandingZone(int planetIndex, float height) {
-        return game.getPlanets().get(planetIndex).getLandingSite(0, height, new Vector2());
+        return game.getPlanets().get(planetIndex).getLandingSite(height, new Vector2());
     }
 
     /**

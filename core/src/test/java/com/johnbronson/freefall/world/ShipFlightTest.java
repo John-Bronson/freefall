@@ -2,6 +2,7 @@ package com.johnbronson.freefall.world;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.math.MathUtils;
@@ -38,10 +39,10 @@ class ShipFlightTest {
             physics.getWorld().setContactListener(new ShipContactListener());
         }
 
-        /** Puts the ship above landing zone 0, tilted, and moving toward the ground. */
+        /** Puts the ship above the landing zone, tilted, and moving toward the ground. */
         Ship placeShip(float heightAboveGround, float tiltDegrees, float descentSpeed) {
-            float siteAngle = planet.getLandingSiteAngle(0);
-            Vector2 position = planet.getLandingSite(0, Ship.HULL_RADIUS + heightAboveGround, new Vector2());
+            float siteAngle = planet.getLandingSiteAngle();
+            Vector2 position = planet.getLandingSite(Ship.HULL_RADIUS + heightAboveGround, new Vector2());
             ship = new Ship(physics.getWorld(), position, Ship.uprightAngle(siteAngle) + tiltDegrees * MathUtils.degRad);
             ship.getBody().setLinearVelocity(
                 -MathUtils.cos(siteAngle) * descentSpeed, -MathUtils.sin(siteAngle) * descentSpeed);
@@ -293,6 +294,38 @@ class ShipFlightTest {
                 game.update(PhysicsWorld.TIME_STEP);
                 assertEquals(FlightState.LANDED, game.getShip().getState(), "step " + i);
             }
+        } finally {
+            game.dispose();
+        }
+    }
+
+    /**
+     * R rebuilds the planets from a new seed (new hills and new landing sites), destroys
+     * the old planet bodies, and lands a fresh ship on planet 1's new site.
+     */
+    @Test
+    void restartBuildsNewPlanetsAndTheShipLandsOnTheNewSite() {
+        GameWorld game = new GameWorld(1L);
+        try {
+            Planet oldHome = game.getPlanets().get(0);
+            Planet oldOther = game.getPlanets().get(1);
+
+            game.requestRestart();
+            game.update(PhysicsWorld.TIME_STEP);
+            for (int i = 0; i < 60; i++) game.update(PhysicsWorld.TIME_STEP);
+
+            Planet home = game.getPlanets().get(0);
+            Planet other = game.getPlanets().get(1);
+            assertEquals(2, game.getPlanets().size);
+            assertTrue(home != oldHome && other != oldOther, "planets replaced");
+            assertNotEquals(oldHome.getTerrain().getLandingZone(), home.getTerrain().getLandingZone(), "home site moved");
+            assertNotEquals(oldHome.getTerrain().getRadius(64), home.getTerrain().getRadius(64), "new hills");
+            // Two planets plus one ship: the old planet bodies must be gone.
+            assertEquals(3, game.getBox2DWorld().getBodyCount());
+
+            Vector2 newSite = home.getLandingSite(Ship.HULL_RADIUS, new Vector2());
+            assertEquals(FlightState.LANDED, game.getShip().getState());
+            assertTrue(game.getShip().getBody().getPosition().dst(newSite) < 0.5f, "ship sits on the new site");
         } finally {
             game.dispose();
         }

@@ -1,8 +1,6 @@
 package com.johnbronson.freefall.controls;
 
+/** Analog inputs, from 0 to 1. Digital (on/off) inputs are {@link InputAction}s. */
 public enum InputAxis {
-    THRUST_MAIN_AXIS,
-    PAN_CAM_HORIZONTAL,
-    PAN_CAM_VERTICAL,
-    ZOOM_AXIS
+    THRUST_MAIN_AXIS
 }

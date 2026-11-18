@@ -13,7 +13,7 @@
 ## Phase 1: Terrain & Atmosphere Zones
 
 - [x] Generate random terrain as height values around each planetoid's circumference
-- [x] Implement algorithm to create flat landing zones (minimum 3-4 per planet)
+- [x] Implement algorithm to create flat landing zones (minimum 3-4 per planet) *(Later reduced to one random site per planet: see Phase 5.)*
 - [x] Render terrain sprites/polygons on each planet
 - [x] Define atmosphere radius for each planet (larger than planet radius)
 - [x] Add visual rendering for atmosphere (semi-transparent gradient/circle)
@@ -252,10 +252,40 @@ Knock-on effects:
 
 ## Phase 5: Landing Success Criteria
 
+### One random landing site per planet (planned and built 2026-11-18; play test open)
+
+Goal: each planet has exactly **one** landing zone, at a random place on its surface. This replaces the three fixed zones (0–22.5°, 120–142.5°, 240–262.5°). Do this before the zone check below, because that check gets simpler with only one zone.
+
+Decisions:
+
+- **Snap the site to a terrain vertex.** The zone starts at a random vertex index (0–127), not at an arbitrary angle. Flattening already works vertex by vertex, so a zone that starts between vertices would just be rounded to one anyway. Choosing the index directly makes the rounding explicit and removes the `ANGLE_EPSILON` fudge for zone edges.
+- **Keep the zone width.** 8 segments (9 flat vertices) = 22.5°, about 110 m at `LANDING_ZONE_RADIUS`. Name it as a constant, e.g. `LANDING_ZONE_SEGMENTS = 8`, rather than deriving it from degrees.
+- **Pick it from the terrain seed**, using the same `RandomXS128` that `Terrain` already creates. The same seed then gives the same site, so tests and restarts stay repeatable. `Main` already passes a random seed, so each launch still gets a new site. Draw the index *after* the 128 heights, so a given seed keeps its existing hills.
+- **R rebuilds the whole world** (changed twice on 2026-11-18: first "R keeps the same site", then "R moves only the site"). `GameWorld.restart` destroys the ship and both planet bodies, then builds new planets from the next seed of a seeded generator, so the hills and the sites both change. `Terrain` never changes after it's built. A starting seed gives a repeatable series of worlds, for tests.
+- **Zones can wrap past 0.** A zone that starts at vertex 124 covers 124–127 and 0–4. The `Terrain` loops already use `% VERTEX_COUNT`. What breaks is the `LandingZone` record, which requires `startAngle < endAngle <= 2π`.
+
+Steps:
+
+- [x] **Make `LandingZone` vertex-based**: e.g. `record LandingZone(int firstVertex, int segmentCount)`. Validate `0 <= firstVertex < VERTEX_COUNT` and `segmentCount > 0`. `ofDegrees` and the angle fields go away. Helper ideas: `containsVertex(int i)` uses `Math.floorMod(i - firstVertex, VERTEX_COUNT) <= segmentCount`, and `startAngle()` / `endAngle()` become derived values if the renderer or HUD want them.
+- [x] **`Terrain` picks the zone.** One constructor rolls the start vertex from the seeded random. A second one (or a package-private one) takes a `LandingZone`, so tests can place it exactly. Store the zone in a field and expose `getLandingZone()`. `firstVertexOf` / `lastVertexOf` reduce to reading the record. `landingSiteAngle()` uses the middle segment `firstVertex + segmentCount / 2` (wrapped), plus half a segment, as it does today.
+- [x] **`Planet` drops the `LANDING_ZONES` array.** `getLandingSiteAngle(int zoneIndex)` → `getLandingSiteAngle()`, and `getLandingSite(int, float, Vector2)` → `getLandingSite(float, Vector2)`.
+- [x] **`GameWorld.spawnShip`** drops `int zone = 0`. The ship still spawns on planet 1's site.
+- [x] **Renderer check:** `PlanetRenderer` draws stripes from `isLandingVertex`, so it should need no change. Check that a zone wrapping past vertex 0 draws correctly.
+- [x] **Tests** (`TerrainTest`, `ShipFlightTest`, `TrajectoryPredictorTest` call the zone-index API and `ofDegrees`; the agent updates those). New cases worth adding:
+    - a wrapping zone (first vertex 124) flattens 124–127 and 0–4, and nothing else
+    - exactly `segmentCount + 1` landing vertices for any seed
+    - the same seed gives the same site; across a handful of seeds, not every site is the same
+    - the site angle sits mid-segment inside the zone, including for a wrapping zone
+- [x] **Docs:** the terrain line in `AGENTS.md` (the fixed zone angles), the terrain paragraph in `docs/box2d-flight-manual.html` ("Landing zones are angular ranges…"). `docs/migration-guide.html` is a historical record; leave it.
+- [ ] **Play test:** the planet 2 site can now be on the far side from planet 1. Is that fun or just long? If it's a problem, limit the roll to an arc, or bias it toward the other planet. Wait until it's been played.
+- [ ] Nice to have: show the site's angle (and the seed) in the debug overlay, so a bad roll can be reproduced.
+
+### Landing validation
+
 - [ ] Implement landing validation:
     - [x] Low velocity (`MAX_LANDING_SPEED`, 10 m/s impact speed). Landing legs replace this with leg-break and hull-hit rules (Phase 4).
     - [x] Near-vertical angle (`MAX_LANDING_TILT`, 15° from the planet's local up)
-    - [ ] On a flat landing zone. `judgeTouchdown` doesn't check this yet, so a gentle touchdown on rough terrain counts as landed. Use the touchdown point's angle around the planet against the `LandingZone` ranges.
+    - [ ] On the landing zone (after the single random site above). `judgeTouchdown` doesn't check this yet, so a gentle touchdown on rough terrain counts as landed. Turn the ship's position into an angle around the planet (`atan2` gives −π..π, so normalize to 0..2π), then into a vertex position (`angle / ANGLE_BETWEEN_VERTICES`). Check that it falls within the planet's single `LandingZone`, wrapping the same way as `containsVertex`. Use the ship's center for now; the landing legs move this check to the feet.
 - [ ] Also check that ship isn't overheated
 - [ ] Add success/failure feedback (text display, color change, sound effect slot). Crash text and red hull exist; nothing celebrates a landing yet, and there's no sound slot.
 - [x] Add respawn/reset functionality after crash or successful landing (R → `GameWorld.requestRestart`, applied outside the step)
@@ -342,7 +372,7 @@ Builds on everything above. Each level adds one new skill on top of the last.
 - [ ] **Level 2: Basic landing.** The current game: two planets, take off from planet 1, land on planet 2.
 - [ ] **Level 3: Fuel and docking.** Starting fuel is restricted so the trip can't be made on one tank. The player must dock with the space station (Phase 7) to refuel on the way.
 - [ ] **Level 4: Landing clearance.** Before entering planet 2's atmosphere, the player must request landing clearance. Clearance requires a stable orbit: staying within a distance band around planet 2 (outside the atmosphere) for a set time. Entering the atmosphere without clearance fails the level, or at least warns.
-    - Open questions: what counts as "an orbit" (time spent in the band, or a full 360° sweep around the planet)? Is clearance a key press or automatic once the orbit holds? Does clearance name a specific landing zone?
+    - Open questions: what counts as "an orbit" (time spent in the band, or a full 360° sweep around the planet)? Is clearance a key press or automatic once the orbit holds? (Each planet has only one landing zone since Phase 5, so clearance doesn't need to name one.)
     - The trajectory predictor (Phase 3.5) would help the player see whether their orbit is closed.
 
 ### Planets of different sizes

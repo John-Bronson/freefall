@@ -76,12 +76,6 @@ public final class TrajectoryPredictor {
      */
     public static final int STEP_COUNT = Math.round(PREDICTION_SECONDS / PhysicsWorld.TIME_STEP);
 
-    /**
-     * The ship's nose direction in its own frame: straight up its local +Y axis.
-     * {@code private}: only this class uses it.
-     */
-    private static final Vector2 NOSE_DIRECTION = new Vector2(0f, 1f);
-
     // Inputs, handed over by GameWorld. `final` on a field means it always refers to
     // the same object, like `readonly` in TypeScript. The object itself can still
     // change: GameWorld's planet list is the same list, but planets could be added.
@@ -175,12 +169,9 @@ public final class TrajectoryPredictor {
         float mass = body.getMass();
         float dt = PhysicsWorld.TIME_STEP;
 
-        // getWorldVector turns a direction in the ship's own frame into world
-        // coordinates, i.e. rotates (0, 1) by the ship's angle θ, giving (−sin θ, cos θ).
-        // (Rotating any (x, y) by θ gives (x·cos θ − y·sin θ, x·sin θ + y·cos θ); put
-        // x = 0, y = 1 into that and you get the line above.)
-        // Box2D reuses the vector it returns, so copy it out straight away.
-        boosterDirection.set(body.getWorldVector(NOSE_DIRECTION));
+        // The booster pushes along the nose, and the prediction holds that heading.
+        // noseDirection() returns a vector Box2D reuses, so copy it out straight away.
+        boosterDirection.set(ship.noseDirection());
 
         // A `float` is a primitive: assigning it copies the number itself, not a
         // reference. So counting this local copy down doesn't touch the real ship's

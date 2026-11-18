@@ -1,9 +1,12 @@
 package com.johnbronson.freefall.controls;
 
+/**
+ * Digital (on/off) inputs. Main-engine thrust is analog, so it's an {@link InputAxis}
+ * instead.
+ */
 public enum InputAction {
     ROTATE_LEFT,
     ROTATE_RIGHT,
-    THRUST_MAIN,
     THRUST_SOLID,
     PAN_CAM_LEFT,
     PAN_CAM_RIGHT,

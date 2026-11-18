@@ -933,7 +933,7 @@ position.mulAdd(velocity, <span class="hl">dt</span>);                    <span 
       </div>
 
       <h3>The terrain: ChainShape loop</h3>
-      <p><code>Terrain</code> stores 128 vertex radii, evenly spaced by angle and generated from a seed, so a given seed always gives the same planet. Landing zones are angular ranges whose vertices are flattened to one radius. <code>Planet</code> hands the same vertices to a <code>ChainShape</code> loop, and <code>PlanetRenderer</code> draws them. What you see is exactly what you collide with.</p>
+      <p><code>Terrain</code> stores 128 vertex radii, evenly spaced by angle and generated from a seed, so a given seed always gives the same planet. Each planet has one landing zone: a run of vertices, starting at a random vertex, flattened to one radius. A restart destroys both planet bodies and builds new ones from a new seed, outside the step like any body change, so the hills and the site both change. <code>Planet</code> hands the same vertices to a <code>ChainShape</code> loop, and <code>PlanetRenderer</code> draws them. What you see is exactly what you collide with.</p>
 
       <figure>
         <div class="fig-wrap">
